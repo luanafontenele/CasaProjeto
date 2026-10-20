@@ -16,12 +16,28 @@ import {
   AlertTriangle 
 } from 'lucide-react';
 
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { api } from '@/lib/api';
+import { mensagemApi, semConexao } from '@/lib/erro';
+
+function mensagemDoErro(err: unknown, padrao: string): string {
+  if (semConexao(err)) return 'Não foi possível conectar ao servidor. Verifique se o backend está rodando.';
+  return mensagemApi(err, padrao);
+}
+
 export default function Cadastro() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+
+  // Etapa 1: dados  ·  Etapa 2: código de 6 dígitos recebido por e-mail.
+  // A conta SÓ é criada no Firebase depois que o código é confirmado.
+  const [etapa, setEtapa] = useState<'dados' | 'codigo'>('dados');
+  const [codigo, setCodigo] = useState('');
+  const [enviando, setEnviando] = useState(false);
 
   // FEEDBACK
   const [feedback, setFeedback] = useState<{
@@ -39,8 +55,10 @@ export default function Cadastro() {
     return temTamanhoMinimo && temMaiuscula && temNumeroOuEspecial;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // ETAPA 1: valida e pede o envio do código (ainda não cria a conta)
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (enviando) return;
 
     if (!nome.trim() || !email.trim() || !senha.trim()) {
       setFeedback({
@@ -60,15 +78,58 @@ export default function Cadastro() {
       return;
     }
 
-    // Sucesso no cadastro
-    setFeedback({
-      tipo: 'sucesso',
-      titulo: 'Cadastro Realizado!',
-      mensagem: 'Sua conta foi criada com sucesso no sistema C.A.S.A.',
-      acaoSucesso: () => {
-        router.push('/dashboard');
-      }
-    });
+    setEnviando(true);
+    try {
+      await api.post('/auth/cadastro', { nome: nome.trim(), email: email.trim(), senha });
+      setCodigo('');
+      setEtapa('codigo');
+      setFeedback({
+        tipo: 'sucesso',
+        titulo: 'Código Enviado',
+        mensagem: `Enviamos um código de 6 dígitos para ${email.trim()}. Digite-o para concluir o cadastro. Confira também o spam.`
+      });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', titulo: 'Falha no Cadastro', mensagem: mensagemDoErro(err, 'Não foi possível iniciar o cadastro.') });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // ETAPA 2: confere o código; o servidor cria a conta e já entramos
+  const handleConfirmarCodigo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (enviando) return;
+
+    if (!/^\d{6}$/.test(codigo)) {
+      setFeedback({ tipo: 'atencao', titulo: 'Código Inválido', mensagem: 'Digite os 6 números do código enviado ao seu e-mail.' });
+      return;
+    }
+
+    setEnviando(true);
+    try {
+      await api.post('/auth/confirmar', { email: email.trim(), codigo, senha });
+      await signInWithEmailAndPassword(auth, email.trim(), senha);
+      await api.get('/me'); // cria o perfil no Firestore
+      setFeedback({
+        tipo: 'sucesso',
+        titulo: 'Cadastro Realizado!',
+        mensagem: 'Sua conta foi criada com sucesso no sistema C.A.S.A.',
+        acaoSucesso: () => router.push('/dashboard')
+      });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', titulo: 'Falha na Confirmação', mensagem: mensagemDoErro(err, 'Não foi possível confirmar o código.') });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const handleReenviar = async () => {
+    try {
+      await api.post('/auth/reenviar-codigo', { email: email.trim() });
+      setFeedback({ tipo: 'sucesso', titulo: 'Código Reenviado', mensagem: 'Se o cadastro ainda estiver pendente, enviamos um novo código.' });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', titulo: 'Não foi Possível Reenviar', mensagem: mensagemDoErro(err, 'Tente novamente em instantes.') });
+    }
   };
 
   const handleFecharFeedback = () => {
@@ -133,13 +194,16 @@ export default function Cadastro() {
 
           <div className="text-center flex flex-col gap-1.5">
             <h1 className="text-3xl font-extrabold text-[#5F7DE3]">
-              Cadastrar
+              {etapa === 'dados' ? 'Cadastrar' : 'Confirme seu e-mail'}
             </h1>
             <p className="text-xs text-slate-400 font-medium max-w-xs mx-auto leading-relaxed">
-              Insira as informações abaixo para criar sua conta de responsável.
+              {etapa === 'dados'
+                ? 'Insira as informações abaixo para criar sua conta de responsável.'
+                : `Digite o código de 6 dígitos enviado para ${email.trim()}. Sua conta só será criada após a confirmação.`}
             </p>
           </div>
 
+          {etapa === 'dados' ? (
           <form 
             onSubmit={handleSubmit}
             className="w-full bg-[#FAF8FC] border border-purple-100/80 rounded-3xl p-6 sm:p-8 flex flex-col gap-4 shadow-xs"
@@ -208,12 +272,50 @@ export default function Cadastro() {
 
             <button 
               type="submit"
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#94A7EB] to-[#6A81D6] hover:from-[#8196E6] hover:to-[#5770C9] text-white font-semibold text-sm transition-all shadow-md shadow-[#5F7DE3]/20 cursor-pointer mt-2"
+              disabled={enviando}
+              className="w-full py-3.5 disabled:opacity-60 rounded-2xl bg-gradient-to-r from-[#94A7EB] to-[#6A81D6] hover:from-[#8196E6] hover:to-[#5770C9] text-white font-semibold text-sm transition-all shadow-md shadow-[#5F7DE3]/20 cursor-pointer mt-2"
             >
-              Confirmar
+              {enviando ? 'Enviando...' : 'Continuar'}
             </button>
 
           </form>
+          ) : (
+          <form
+            onSubmit={handleConfirmarCodigo}
+            className="w-full bg-[#FAF8FC] border border-purple-100/80 rounded-3xl p-6 sm:p-8 flex flex-col gap-4 shadow-xs"
+          >
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-slate-700">Código de confirmação:</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-white border border-purple-100 rounded-2xl px-4 py-3 text-center text-lg tracking-[0.5em] font-bold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:border-[#5F7DE3] shadow-xs transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={enviando}
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#94A7EB] to-[#6A81D6] hover:from-[#8196E6] hover:to-[#5770C9] disabled:opacity-60 text-white font-semibold text-sm transition-all shadow-md shadow-[#5F7DE3]/20 cursor-pointer mt-2"
+            >
+              {enviando ? 'Confirmando...' : 'Confirmar e criar conta'}
+            </button>
+
+            <div className="flex items-center justify-between text-xs">
+              <button type="button" onClick={() => setEtapa('dados')} className="font-semibold text-slate-400 hover:text-slate-600 cursor-pointer">
+                ← Corrigir dados
+              </button>
+              <button type="button" onClick={handleReenviar} className="font-semibold text-[#5F7DE3] hover:underline cursor-pointer">
+                Reenviar código
+              </button>
+            </div>
+          </form>
+          )}
 
           <div className="md:hidden text-center mt-2">
             <span className="text-xs text-slate-500">Já tem uma conta? </span>

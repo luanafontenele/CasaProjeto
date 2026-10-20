@@ -1,45 +1,43 @@
 'use client';
 
-import { useState } from 'react';
-import Image from 'next/image';
-import { 
-  Home, 
-  Grid, 
-  BarChart2, 
-  History, 
-  Settings, 
-  Bell, 
-  LogOut,
-  ChevronDown,
-  X,
-  FileText,
-  Info,
-  HelpCircle,
-  Moon,
-  Trash2,
-  Plus,
-  Minus,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  ShieldCheck
-} from 'lucide-react';
-import Link from 'next/link';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useRouter } from 'next/navigation';
+import { api, erroParaFeedback } from '@/lib/api';
+import { sair } from '@/lib/auth';
+import { useUsuario } from '@/lib/UsuarioContext';
+import { Bell, X, FileText, Info, HelpCircle, Moon, Trash2, Plus, Minus, AlertTriangle, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+
+import Sidebar from '@/components/Sidebar';
+import BarraTopo from '@/components/BarraTopo';
 
 export default function Configuracoes() {
-  const [temNotificacoes, setTemNotificacoes] = useState(true);
-  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
-  const [notificacoesAtivas, setNotificacoesAtivas] = useState(true);
-  const [modoEscuro, setModoEscuro] = useState(false);
-  const [tamanhoFonte, setTamanhoFonte] = useState(10);
+  const router = useRouter();
+  const { perfil, atualizarLocal } = useUsuario();
+  const notificacoesAtivas = perfil?.notificacoes_ativas ?? true;
+  const modoEscuro = perfil?.modo_escuro ?? false;
+  const tamanhoFonte = perfil?.tamanho_fonte ?? 10;
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Salva uma preferência: atualiza a tela na hora e confirma no servidor (desfaz se falhar)
+  const salvarPreferencia = async (mudanca: { notificacoes_ativas?: boolean; modo_escuro?: boolean; tamanho_fonte?: number }) => {
+    const anterior = { notificacoes_ativas: notificacoesAtivas, modo_escuro: modoEscuro, tamanho_fonte: tamanhoFonte };
+    atualizarLocal(mudanca);
+    try {
+      await api.patch('/me', mudanca);
+    } catch (err) {
+      atualizarLocal(anterior);
+      setFeedback(erroParaFeedback(err, 'Não foi Possível Salvar'));
+    }
+  };
+
+  useEffect(() => () => { if (temporizador.current) clearTimeout(temporizador.current); }, []);
 
   // MODAIS DE INFORMAÇÕES
   const [modalConteudo, setModalConteudo] = useState<{
     titulo: string;
     subtitulo: string;
     texto: string;
-    icone: any;
+    icone: ComponentType<{ className?: string }>;
   } | null>(null);
 
   // MODAL EXCLUIR CONTA
@@ -52,130 +50,39 @@ export default function Configuracoes() {
     mensagem: string;
   }>({ tipo: null, titulo: '', mensagem: '' });
 
-  const aumentarFonte = () => setTamanhoFonte((prev) => Math.min(prev + 1, 20));
-  const diminuirFonte = () => setTamanhoFonte((prev) => Math.max(prev - 1, 8));
+  const mudarFonte = (novo: number) => {
+    const valor = Math.max(8, Math.min(20, novo));
+    if (valor === tamanhoFonte) return;
+    atualizarLocal({ tamanho_fonte: valor }); // reflete na hora; o salvamento espera o usuário parar de clicar
+    if (temporizador.current) clearTimeout(temporizador.current);
+    temporizador.current = setTimeout(() => {
+      api.patch('/me', { tamanho_fonte: valor }).catch((err) => setFeedback(erroParaFeedback(err, 'Não foi Possível Salvar')));
+    }, 500);
+  };
+  const aumentarFonte = () => mudarFonte(tamanhoFonte + 1);
+  const diminuirFonte = () => mudarFonte(tamanhoFonte - 1);
 
-  const handleExcluirConta = () => {
+  const handleExcluirConta = async () => {
     setShowExcluirContaModal(false);
-    setFeedback({
-      tipo: 'erro',
-      titulo: 'Solicitação Enviada',
-      mensagem: 'Sua solicitação de exclusão de conta foi processada com sucesso.'
-    });
+    try {
+      await api.delete('/me'); // apaga dados, arquivos e o usuário no Firebase Auth
+      await sair().catch(() => {}); // o usuário já não existe mais no Firebase
+      router.replace('/');
+    } catch (err) {
+      setFeedback(erroParaFeedback(err, 'Não foi Possível Excluir a Conta'));
+    }
   };
 
   return (
     <div className={`min-h-screen ${modoEscuro ? 'bg-slate-900 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} flex font-sans relative transition-colors duration-200`}>
       
       {/* SIDEBAR LATERAL */}
-      <aside className={`w-64 ${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border-r p-6 flex flex-col justify-between min-h-screen shadow-sm shrink-0`}>
-        <div className="flex flex-col gap-8">
-          
-          <div className="flex justify-center w-full px-2">
-            <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
-              <Image 
-                src="/logo.png" 
-                alt="Logo C.A.S.A" 
-                width={96} 
-                height={96} 
-                className="object-contain"
-                priority 
-              />
-            </div>
-          </div>
-
-          <nav className="flex flex-col gap-2">
-            <Link 
-              href="/dashboard"
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${modoEscuro ? 'text-slate-400 hover:bg-slate-700 hover:text-[#5F7DE3]' : 'text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3]'} font-medium text-sm transition-all cursor-pointer`}
-            >
-              <Home className="w-5 h-5" />
-              Início
-            </Link>
-
-            <Link 
-              href="/categoria"
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${modoEscuro ? 'text-slate-400 hover:bg-slate-700 hover:text-[#5F7DE3]' : 'text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3]'} font-medium text-sm transition-all cursor-pointer`}
-            >
-              <Grid className="w-5 h-5" />
-              Categorias
-            </Link>
-
-            <Link 
-              href="/desempenho"
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${modoEscuro ? 'text-slate-400 hover:bg-slate-700 hover:text-[#5F7DE3]' : 'text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3]'} font-medium text-sm transition-all cursor-pointer`}
-            >
-              <BarChart2 className="w-5 h-5" />
-              Desempenho
-            </Link>
-
-            <Link 
-              href="/historico"
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${modoEscuro ? 'text-slate-400 hover:bg-slate-700 hover:text-[#5F7DE3]' : 'text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3]'} font-medium text-sm transition-all cursor-pointer`}
-            >
-              <History className="w-5 h-5" />
-              Histórico
-            </Link>
-
-            <Link 
-              href="/configuracoes"
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#5F7DE3] text-white font-medium text-sm shadow-md shadow-[#5F7DE3]/25 transition-all cursor-pointer"
-            >
-              <Settings className="w-5 h-5" />
-              Configurações
-            </Link>
-          </nav>
-        </div>
-
-        <div className={`flex flex-col gap-3 pt-6 border-t ${modoEscuro ? 'border-slate-700' : 'border-slate-100'}`}>
-          <div className={`flex items-center justify-between p-2 rounded-2xl ${modoEscuro ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'} border`}>
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#5F7DE3] text-white flex items-center justify-center font-bold text-sm">
-                Z
-              </div>
-              <span className={`font-semibold text-sm ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Zeus Alves</span>
-            </div>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
-          </div>
-
-          <Link href="/" className="w-full">
-            <button className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-slate-500 hover:bg-slate-600 text-white text-xs font-semibold transition-all shadow-sm cursor-pointer">
-              <LogOut className="w-4 h-4" />
-              Desconectar
-            </button>
-          </Link>
-        </div>
-      </aside>
+      <Sidebar ativo="configuracoes" escuro={modoEscuro} />
 
       {/* CONTEÚDO PRINCIPAL */}
       <main className="flex-1 p-8 flex flex-col gap-6 max-w-5xl mx-auto relative">
         
-        {/* BARRA SUPERIOR DE SIMULAÇÃO */}
-        <div className={`flex justify-between items-center ${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} p-3.5 rounded-2xl border shadow-xs`}>
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span className={`font-bold ${modoEscuro ? 'text-slate-300' : 'text-slate-700'} flex items-center gap-1`}>
-              <RefreshCw className="w-3.5 h-3.5 text-[#5F7DE3]" /> Simular Estado:
-            </span>
-            <button 
-              onClick={() => setTemNotificacoes(!temNotificacoes)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                temNotificacoes ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {temNotificacoes ? 'Com Notificações' : 'Sem Notificações'}
-            </button>
-          </div>
-
-          <button 
-            onClick={() => setShowNotificationsModal(!showNotificationsModal)}
-            className={`p-2.5 rounded-2xl ${modoEscuro ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'} border text-[#5F7DE3] hover:opacity-80 transition-all shadow-xs relative cursor-pointer`}
-          >
-            <Bell className="w-5 h-5" />
-            {temNotificacoes && (
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white"></span>
-            )}
-          </button>
-        </div>
+        <BarraTopo escuro={modoEscuro} />
 
         <section 
           className="w-full h-28 rounded-3xl p-8 flex items-center justify-center text-white shadow-lg relative overflow-hidden text-center"
@@ -203,7 +110,7 @@ export default function Configuracoes() {
                   </div>
                   
                   <button 
-                    onClick={() => setNotificacoesAtivas(!notificacoesAtivas)}
+                    onClick={() => salvarPreferencia({ notificacoes_ativas: !notificacoesAtivas })}
                     className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                       notificacoesAtivas ? 'bg-[#5F7DE3]' : 'bg-slate-300'
                     }`}
@@ -282,7 +189,7 @@ export default function Configuracoes() {
                     </div>
 
                     <button 
-                      onClick={() => setModoEscuro(!modoEscuro)}
+                      onClick={() => salvarPreferencia({ modo_escuro: !modoEscuro })}
                       className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                         modoEscuro ? 'bg-[#5F7DE3]' : 'bg-slate-300'
                       }`}
@@ -344,51 +251,6 @@ export default function Configuracoes() {
 
         </div>
 
-        {/* POP-UP DE NOTIFICAÇÕES */}
-        {showNotificationsModal && (
-          <div className="absolute top-20 right-8 w-80 bg-[#F3EFF5] rounded-3xl p-6 shadow-2xl border border-indigo-100 z-50 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h4 className="text-lg font-bold text-[#5F7DE3]">Notificações</h4>
-              <button 
-                onClick={() => setShowNotificationsModal(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {temNotificacoes ? (
-              <div className="flex flex-col gap-3">
-                <div className="bg-white p-3.5 rounded-2xl shadow-xs flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                      ESP
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-slate-800">Dispositivo Conectado</span>
-                      <span className="text-[10px] text-slate-400">ESP32 operando normalmente</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-purple-500 font-medium">Agora</span>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white/60 border border-slate-200/60 p-6 rounded-2xl text-center flex flex-col items-center gap-2">
-                <Bell className="w-8 h-8 text-slate-300" />
-                <span className="text-xs text-slate-500 font-medium">Nenhuma notificação por enquanto.</span>
-              </div>
-            )}
-
-            <div className="text-center mt-6">
-              <button 
-                onClick={() => setShowNotificationsModal(false)}
-                className="text-xs text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        )}
 
       </main>
 

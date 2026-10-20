@@ -16,11 +16,31 @@ import {
   AlertTriangle 
 } from 'lucide-react';
 
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { api } from '@/lib/api';
+import { codigoApi, codigoFirebase, mensagemApi, semConexao } from '@/lib/erro';
+
+// Traduz os erros do Firebase e da API para mensagens claras
+function mensagemDeLogin(err: unknown): string {
+  const codigoFb = codigoFirebase(err);
+  if (codigoApi(err) === 'email_nao_verificado') return 'Seu e-mail ainda não foi confirmado. Conclua o cadastro com o código enviado por e-mail.';
+  if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-email'].includes(codigoFb ?? '')) {
+    return 'E-mail ou senha incorretos.';
+  }
+  if (codigoFb === 'auth/too-many-requests') return 'Muitas tentativas. Aguarde alguns minutos ou redefina sua senha.';
+  if (codigoFb === 'auth/network-request-failed' || semConexao(err)) {
+    return 'Não foi possível conectar ao servidor. Verifique sua conexão e se o backend está rodando.';
+  }
+  return mensagemApi(err, 'Não foi possível entrar. Tente novamente.');
+}
+
 export default function Login() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [entrando, setEntrando] = useState(false);
 
   // FEEDBACK
   const [feedback, setFeedback] = useState<{
@@ -30,8 +50,9 @@ export default function Login() {
     acaoSucesso?: () => void;
   }>({ tipo: null, titulo: '', mensagem: '' });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (entrando) return;
 
     if (!email.trim() || !senha.trim()) {
       setFeedback({
@@ -42,13 +63,22 @@ export default function Login() {
       return;
     }
 
-    // Simulação de login realizado com sucesso
-    setFeedback({
-      tipo: 'sucesso',
-      titulo: 'Login Realizado!',
-      mensagem: 'Seja bem-vindo de volta ao sistema C.A.S.A.',
-      acaoSucesso: () => router.push('/dashboard')
-    });
+    setEntrando(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), senha);
+      await api.get('/me'); // cria o perfil no 1º acesso; recusa (403) se o e-mail não foi confirmado
+      setFeedback({
+        tipo: 'sucesso',
+        titulo: 'Login Realizado!',
+        mensagem: 'Seja bem-vindo de volta ao sistema C.A.S.A.',
+        acaoSucesso: () => router.push('/dashboard')
+      });
+    } catch (err) {
+      await signOut(auth).catch(() => {}); // não deixa sessão "pela metade"
+      setFeedback({ tipo: 'erro', titulo: 'Falha no Login', mensagem: mensagemDeLogin(err) });
+    } finally {
+      setEntrando(false);
+    }
   };
 
   return (

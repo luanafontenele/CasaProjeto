@@ -5,6 +5,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Mail, ArrowLeft, KeyRound, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { codigoFirebase } from '@/lib/erro';
+
 export default function EsqueciSenha() {
   const [email, setEmail] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -16,7 +20,7 @@ export default function EsqueciSenha() {
     mensagem: string;
   }>({ tipo: null, titulo: '', mensagem: '' });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!email.trim()) {
@@ -28,13 +32,32 @@ export default function EsqueciSenha() {
       return;
     }
 
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+    } catch (err) {
+      const codigoFb = codigoFirebase(err);
+      // Só mostra erro para problemas que o usuário pode corrigir ou tentar de novo
+      if (codigoFb === 'auth/invalid-email' || codigoFb === 'auth/too-many-requests') {
+        setFeedback({
+          tipo: 'erro',
+          titulo: codigoFb === 'auth/invalid-email' ? 'E-mail Inválido' : 'Muitas Tentativas',
+          mensagem: codigoFb === 'auth/invalid-email'
+            ? 'O e-mail informado não parece válido. Confira e tente de novo.'
+            : 'Aguarde alguns minutos antes de tentar novamente.'
+        });
+        return;
+      }
+    }
+
+    // Mensagem igual exista a conta ou não (não revela quais e-mails estão cadastrados)
     setIsSubmitted(true);
     setFeedback({
       tipo: 'sucesso',
       titulo: 'Instruções Enviadas',
-      mensagem: `Enviamos as instruções de redefinição de senha para ${email}.`
+      mensagem: `Se existir uma conta para ${email}, enviamos o link de redefinição. Confira também a caixa de spam.`
     });
   };
+
 
   return (
     <div className="min-h-screen w-full flex bg-slate-50 font-sans relative">

@@ -1,47 +1,39 @@
 'use client';
 
-import { useState } from 'react';
-import Image from 'next/image';
-import { 
-  Home, 
-  Grid, 
-  BarChart2, 
-  History, 
-  Settings, 
-  Bell, 
-  LogOut,
-  ChevronDown,
-  X,
-  Search,
-  Filter,
-  Plus,
-  Pencil,
-  Trash2,
-  LayoutGrid,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  RefreshCw,
-  FolderOpen,
-  Volume2,
-  Eye
-} from 'lucide-react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { api, erroParaFeedback } from '@/lib/api';
+import { ChevronDown, X, Search, Filter, Plus, Pencil, Trash2, LayoutGrid, CheckCircle2, XCircle, AlertTriangle, FolderOpen, Volume2, Eye } from 'lucide-react';
+
+import Sidebar from '@/components/Sidebar';
+import BarraTopo from '@/components/BarraTopo';
+
+type Botao = {
+  id: string; rotulo: string; significado: string | null; ordem: number;
+  imagem_id: string | null; imagem: string | null; audio_id: string | null; audio: string | null;
+};
+type Cat = { id: string; nome: string; slug: string; cor: string | null; ordem: number; botoes: Botao[] };
 
 export default function Categoria() {
-  const [temDados, setTemDados] = useState(true);
-  const [temNotificacoes, setTemNotificacoes] = useState(true);
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [categoriasList, setCategoriasList] = useState<Cat[]>([]);
+  const [carregando, setCarregando] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState<any>(null);
-  const [categoriaParaExcluir, setCategoriaParaExcluir] = useState<any>(null);
-  
-  // NOVO: Estado para abrir o modal de detalhes da categoria acessada
-  const [categoriaAcessada, setCategoriaAcessada] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState<Cat | null>(null);
+  const [categoriaParaExcluir, setCategoriaParaExcluir] = useState<Cat | null>(null);
+
+  // Guarda só o id: o modal sempre mostra a versão mais recente da lista
+  const [categoriaAcessadaId, setCategoriaAcessadaId] = useState<string | null>(null);
+  const categoriaAcessada = categoriasList.find((c) => c.id === categoriaAcessadaId) ?? null;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editCategoryName, setEditCategoryName] = useState('');
+
+  // NOVO BOTÃO (rótulo + imagem + áudio opcionais)
+  const [showNovoBotao, setShowNovoBotao] = useState(false);
+  const [botaoRotulo, setBotaoRotulo] = useState('');
+  const [botaoImagem, setBotaoImagem] = useState<File | null>(null);
+  const [botaoAudio, setBotaoAudio] = useState<File | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
   const [feedback, setFeedback] = useState<{
     tipo: 'sucesso' | 'erro' | 'atencao' | null;
@@ -49,182 +41,149 @@ export default function Categoria() {
     mensagem: string;
   }>({ tipo: null, titulo: '', mensagem: '' });
 
-  // Lista mockada de categorias com os botões internos de cada uma
-  const [categoriasList, setCategoriasList] = useState([
-    { 
-      id: 1, 
-      nome: 'Escola', 
-      slug: 'escola',
-      botoes: [
-        { id: 101, rotulo: 'Ir ao Banheiro', audio: 'banheiro.mp3' },
-        { id: 102, rotulo: 'Lanche / Fome', audio: 'lanche.mp3' },
-        { id: 103, rotulo: 'Caderno / Material', audio: 'caderno.mp3' },
-        { id: 104, rotulo: 'Ouvir Música', audio: 'musica.mp3' }
-      ]
-    },
-    { 
-      id: 2, 
-      nome: 'Casa', 
-      slug: 'casa',
-      botoes: [
-        { id: 201, rotulo: 'Beber Água', audio: 'agua.mp3' },
-        { id: 202, rotulo: 'Assistir TV', audio: 'tv.mp3' },
-        { id: 203, rotulo: 'Dormir', audio: 'dormir.mp3' }
-      ]
-    },
-    { 
-      id: 3, 
-      nome: 'Objetos', 
-      slug: 'objetos',
-      botoes: [
-        { id: 301, rotulo: 'Brinquedo', audio: 'brinquedo.mp3' },
-        { id: 302, rotulo: 'Mochila', audio: 'mochila.mp3' }
-      ]
-    },
-  ]);
+  // Recarrega a lista sempre que "versao" muda (chamar carregar() = pedir uma nova leitura)
+  const [versao, setVersao] = useState(0);
+  const carregar = () => setVersao((v) => v + 1);
 
-  const handleAddCategory = (e: React.FormEvent) => {
+  useEffect(() => {
+    let ativo = true;
+    api
+      .get<Cat[]>('/categorias')
+      .then((r) => ativo && setCategoriasList(r.data))
+      .catch((err) => ativo && setFeedback(erroParaFeedback(err, 'Falha ao Carregar as Categorias')))
+      .finally(() => ativo && setCarregando(false));
+    return () => {
+      ativo = false;
+    };
+  }, [versao]);
+
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName.trim()) {
-      setFeedback({
-        tipo: 'erro',
-        titulo: 'Nome Inválido',
-        mensagem: 'Por favor, digite um nome válido para a categoria.'
-      });
+      setFeedback({ tipo: 'erro', titulo: 'Nome Inválido', mensagem: 'Por favor, digite um nome válido para a categoria.' });
       return;
     }
-
-    const newCat = {
-      id: Date.now(),
-      nome: newCategoryName,
-      slug: newCategoryName.toLowerCase().replace(/\s+/g, '-'),
-      botoes: []
-    };
-
-    setCategoriasList([...categoriasList, newCat]);
-    setNewCategoryName('');
-    setShowAddModal(false);
-    setFeedback({
-      tipo: 'sucesso',
-      titulo: 'Categoria Criada',
-      mensagem: `A categoria "${newCat.nome}" foi adicionada com sucesso!`
-    });
+    try {
+      const { data } = await api.post<Cat>('/categorias', { nome: newCategoryName.trim() });
+      carregar();
+      setNewCategoryName('');
+      setShowAddModal(false);
+      setFeedback({ tipo: 'sucesso', titulo: 'Categoria Criada', mensagem: `A categoria "${data.nome}" foi adicionada com sucesso!` });
+    } catch (err) {
+      setShowAddModal(false);
+      setFeedback(erroParaFeedback(err, 'Não foi Possível Criar'));
+    }
   };
 
-  const handleEditCategory = (e: React.FormEvent) => {
+  const handleEditCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editCategoryName.trim() || !showEditModal) return;
-
-    setCategoriasList(categoriasList.map(cat => 
-      cat.id === showEditModal.id ? { ...cat, nome: editCategoryName } : cat
-    ));
-    setShowEditModal(null);
-    setFeedback({
-      tipo: 'sucesso',
-      titulo: 'Categoria Atualizada',
-      mensagem: 'O nome da categoria foi alterado com sucesso.'
-    });
+    try {
+      await api.patch(`/categorias/${showEditModal.id}`, { nome: editCategoryName.trim() });
+      carregar();
+      setShowEditModal(null);
+      setFeedback({ tipo: 'sucesso', titulo: 'Categoria Atualizada', mensagem: 'O nome da categoria foi alterado com sucesso.' });
+    } catch (err) {
+      setShowEditModal(null);
+      setFeedback(erroParaFeedback(err, 'Não foi Possível Renomear'));
+    }
   };
 
-  const handleConfirmarExclusao = () => {
+  const handleConfirmarExclusao = async () => {
     if (!categoriaParaExcluir) return;
-    setCategoriasList(categoriasList.filter(cat => cat.id !== categoriaParaExcluir.id));
+    const alvo = categoriaParaExcluir;
     setCategoriaParaExcluir(null);
-    setFeedback({
-      tipo: 'sucesso',
-      titulo: 'Categoria Removida',
-      mensagem: 'A categoria foi excluída da prancha de comunicação.'
-    });
+    try {
+      await api.delete(`/categorias/${alvo.id}`);
+      if (categoriaAcessadaId === alvo.id) setCategoriaAcessadaId(null);
+      carregar();
+      setFeedback({ tipo: 'sucesso', titulo: 'Categoria Removida', mensagem: 'A categoria foi excluída da prancha de comunicação.' });
+    } catch (err) {
+      setFeedback(erroParaFeedback(err));
+    }
   };
 
-  const categoriasFiltradas = categoriasList.filter(cat => 
-    cat.nome.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const enviarMidia = async (arquivo: File, tipo: 'imagem' | 'audio') => {
+    const form = new FormData();
+    form.append('arquivo', arquivo);
+    form.append('tipo', tipo);
+    const { data } = await api.post<{ id: string }>('/midias', form);
+    return data.id;
+  };
+
+  const fecharNovoBotao = () => {
+    setShowNovoBotao(false);
+    setBotaoRotulo('');
+    setBotaoImagem(null);
+    setBotaoAudio(null);
+  };
+
+  const handleSalvarBotao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoriaAcessada) return;
+    if (!botaoRotulo.trim()) {
+      setFeedback({ tipo: 'erro', titulo: 'Nome Inválido', mensagem: 'Digite o nome (rótulo) do botão.' });
+      return;
+    }
+    setSalvando(true);
+    const enviados: string[] = [];
+    try {
+      const imagem_id = botaoImagem ? await enviarMidia(botaoImagem, 'imagem') : undefined;
+      if (imagem_id) enviados.push(imagem_id);
+      const audio_id = botaoAudio ? await enviarMidia(botaoAudio, 'audio') : undefined;
+      if (audio_id) enviados.push(audio_id);
+      await api.post(`/categorias/${categoriaAcessada.id}/botoes`, { rotulo: botaoRotulo.trim(), imagem_id, audio_id });
+      carregar();
+      fecharNovoBotao();
+      setFeedback({ tipo: 'sucesso', titulo: 'Novo Botão', mensagem: 'Prancha atualizada com o novo botão!' });
+    } catch (err) {
+      // não deixa arquivos soltos se o botão não foi criado
+      await Promise.all(enviados.map((id) => api.delete(`/midias/${id}`).catch(() => {})));
+      setFeedback(erroParaFeedback(err, 'Não foi Possível Criar o Botão'));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const handleExcluirBotao = async (botao: Botao) => {
+    if (!categoriaAcessada) return;
+    try {
+      await api.delete(`/categorias/${categoriaAcessada.id}/botoes/${botao.id}`);
+      carregar();
+    } catch (err) {
+      setFeedback(erroParaFeedback(err));
+    }
+  };
+
+  const tocarAudio = async (botao: Botao) => {
+    if (!botao.audio_id) {
+      setFeedback({ tipo: 'atencao', titulo: 'Sem Áudio', mensagem: `O botão "${botao.rotulo}" ainda não tem um áudio cadastrado.` });
+      return;
+    }
+    try {
+      // o endpoint exige o token, então baixamos como blob e tocamos localmente
+      const { data } = await api.get(`/midias/${botao.audio_id}/arquivo`, { responseType: 'blob' });
+      const url = URL.createObjectURL(data);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch (err) {
+      setFeedback(erroParaFeedback(err, 'Não foi Possível Tocar o Áudio'));
+    }
+  };
+
+  const categoriasFiltradas = categoriasList.filter((cat) => cat.nome.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex font-sans relative">
       
       {/* SIDEBAR LATERAL */}
-      <aside className="w-64 bg-white border-r border-slate-100 p-6 flex flex-col justify-between min-h-screen shadow-sm shrink-0">
-        <div className="flex flex-col gap-8">
-          <div className="flex justify-center w-full px-2">
-            <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
-              <Image src="/logo.png" alt="Logo C.A.S.A" width={96} height={96} className="object-contain" priority />
-            </div>
-          </div>
-
-          <nav className="flex flex-col gap-2">
-            <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3] font-medium text-sm transition-all cursor-pointer">
-              <Home className="w-5 h-5" /> Início
-            </Link>
-            <Link href="/categoria" className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#5F7DE3] text-white font-medium text-sm shadow-md shadow-[#5F7DE3]/25 transition-all cursor-pointer">
-              <Grid className="w-5 h-5" /> Categorias
-            </Link>
-            <Link href="/desempenho" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3] font-medium text-sm transition-all cursor-pointer">
-              <BarChart2 className="w-5 h-5" /> Desempenho
-            </Link>
-            <Link href="/historico" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3] font-medium text-sm transition-all cursor-pointer">
-              <History className="w-5 h-5" /> Histórico
-            </Link>
-            <Link href="/configuracoes" className="flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-[#5F7DE3] font-medium text-sm transition-all cursor-pointer">
-              <Settings className="w-5 h-5" /> Configurações
-            </Link>
-          </nav>
-        </div>
-
-        <div className="flex flex-col gap-3 pt-6 border-t border-slate-100">
-          <div className="flex items-center justify-between p-2 rounded-2xl bg-slate-50 border border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#5F7DE3] text-white flex items-center justify-center font-bold text-sm">Z</div>
-              <span className="font-semibold text-sm text-slate-700">Zeus Alves</span>
-            </div>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
-          </div>
-          <Link href="/" className="w-full">
-            <button className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-slate-500 hover:bg-slate-600 text-white text-xs font-semibold transition-all shadow-sm cursor-pointer">
-              <LogOut className="w-4 h-4" /> Desconectar
-            </button>
-          </Link>
-        </div>
-      </aside>
+      <Sidebar ativo="categoria" />
 
       {/* CONTEÚDO PRINCIPAL */}
       <main className="flex-1 p-8 flex flex-col gap-6 max-w-6xl mx-auto relative">
         
-        {/* BARRA SUPERIOR DE SIMULAÇÃO */}
-        <div className="flex justify-between items-center bg-white p-3.5 rounded-2xl border border-slate-100 shadow-xs">
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span className="font-bold text-slate-700 flex items-center gap-1">
-              <RefreshCw className="w-3.5 h-3.5 text-[#5F7DE3]" /> Simular Estado:
-            </span>
-            <button 
-              onClick={() => setTemDados(!temDados)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                temDados ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {temDados ? 'Com Categorias' : 'Sem Categorias'}
-            </button>
-            <button 
-              onClick={() => setTemNotificacoes(!temNotificacoes)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                temNotificacoes ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {temNotificacoes ? 'Com Notificações' : 'Sem Notificações'}
-            </button>
-          </div>
-
-          <button 
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="p-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-[#5F7DE3] hover:bg-slate-100 transition-all shadow-xs relative cursor-pointer"
-          >
-            <Bell className="w-5 h-5" />
-            {temNotificacoes && (
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white"></span>
-            )}
-          </button>
-        </div>
+        <BarraTopo />
 
         <section 
           className="w-full h-28 rounded-3xl p-8 flex items-center justify-center text-white shadow-lg relative overflow-hidden text-center"
@@ -272,7 +231,7 @@ export default function Categoria() {
         </div>
 
         {/* LISTA DE CATEGORIAS */}
-        {temDados && categoriasFiltradas.length > 0 ? (
+        {categoriasFiltradas.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-2">
             {categoriasFiltradas.map((cat) => (
               <div 
@@ -302,7 +261,7 @@ export default function Categoria() {
                 </div>
 
                 <button 
-                  onClick={() => setCategoriaAcessada(cat)}
+                  onClick={() => { setCategoriaAcessadaId(cat.id); setShowNovoBotao(false); }}
                   className="w-full py-2.5 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white text-xs font-semibold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Eye className="w-4 h-4" />
@@ -311,6 +270,8 @@ export default function Categoria() {
               </div>
             ))}
           </div>
+        ) : carregando ? (
+          <div className="text-center text-xs text-slate-400 py-12">Carregando categorias...</div>
         ) : (
           <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 my-4">
             <FolderOpen className="w-12 h-12 text-slate-300" />
@@ -321,51 +282,6 @@ export default function Categoria() {
           </div>
         )}
 
-        {/* POP-UP DE NOTIFICAÇÕES */}
-        {showNotifications && (
-          <div className="absolute top-20 right-8 w-80 bg-[#F3EFF5] rounded-3xl p-6 shadow-2xl border border-indigo-100 z-50 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h4 className="text-lg font-bold text-[#5F7DE3]">Notificações</h4>
-              <button 
-                onClick={() => setShowNotifications(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {temNotificacoes ? (
-              <div className="flex flex-col gap-3">
-                <div className="bg-white p-3.5 rounded-2xl shadow-xs flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                      ESP
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-slate-800">Dispositivo Conectado</span>
-                      <span className="text-[10px] text-slate-400">ESP32 operando normalmente</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-purple-500 font-medium">Agora</span>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white/60 border border-slate-200/60 p-6 rounded-2xl text-center flex flex-col items-center gap-2">
-                <Bell className="w-8 h-8 text-slate-300" />
-                <span className="text-xs text-slate-500 font-medium">Nenhuma notificação no momento.</span>
-              </div>
-            )}
-
-            <div className="text-center mt-6">
-              <button 
-                onClick={() => setShowNotifications(false)}
-                className="text-xs text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        )}
 
       </main>
 
@@ -375,7 +291,7 @@ export default function Categoria() {
           <div className="bg-white w-full max-w-xl rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-100 relative flex flex-col gap-6 max-h-[85vh] overflow-y-auto">
             
             <button 
-              onClick={() => setCategoriaAcessada(null)}
+              onClick={() => { setCategoriaAcessadaId(null); fecharNovoBotao(); }}
               className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -403,7 +319,7 @@ export default function Categoria() {
 
               {categoriaAcessada.botoes && categoriaAcessada.botoes.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {categoriaAcessada.botoes.map((botao: any) => (
+                  {categoriaAcessada.botoes.map((botao) => (
                     <div 
                       key={botao.id}
                       className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-center justify-between"
@@ -414,23 +330,26 @@ export default function Categoria() {
                         </div>
                         <div className="flex flex-col text-left">
                           <span className="text-xs font-bold text-slate-800">{botao.rotulo}</span>
-                          <span className="text-[10px] text-slate-400">{botao.audio}</span>
+                          <span className="text-[10px] text-slate-400">{botao.audio ?? 'Sem áudio'}</span>
                         </div>
                       </div>
 
-                      <button 
-                        onClick={() => {
-                          setFeedback({
-                            tipo: 'sucesso',
-                            titulo: 'Áudio Testado',
-                            mensagem: `Simulando reprodução de voz: "${botao.rotulo}"`
-                          });
-                        }}
-                        className="p-1.5 text-[#5F7DE3] hover:bg-[#5F7DE3]/10 rounded-lg transition-colors cursor-pointer"
-                        title="Ouvir Áudio"
-                      >
-                        <Volume2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => tocarAudio(botao)}
+                          className="p-1.5 text-[#5F7DE3] hover:bg-[#5F7DE3]/10 rounded-lg transition-colors cursor-pointer"
+                          title="Ouvir Áudio"
+                        >
+                          <Volume2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleExcluirBotao(botao)}
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Excluir botão"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -441,15 +360,37 @@ export default function Categoria() {
               )}
             </div>
 
+            {showNovoBotao && (
+              <form onSubmit={handleSalvarBotao} className="flex flex-col gap-3 bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                <input
+                  value={botaoRotulo}
+                  onChange={(e) => setBotaoRotulo(e.target.value)}
+                  placeholder="Nome do botão (ex.: Beber água)"
+                  maxLength={60}
+                  className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-700 focus:outline-none"
+                />
+                <label className="text-[11px] text-slate-500 flex flex-col gap-1">
+                  Imagem (opcional — PNG, JPEG ou WEBP; vira 240×240)
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setBotaoImagem(e.target.files?.[0] ?? null)} className="text-xs" />
+                </label>
+                <label className="text-[11px] text-slate-500 flex flex-col gap-1">
+                  Áudio (opcional — MP3 ou WAV)
+                  <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" onChange={(e) => setBotaoAudio(e.target.files?.[0] ?? null)} className="text-xs" />
+                </label>
+                <div className="flex gap-3">
+                  <button type="submit" disabled={salvando} className="flex-1 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-semibold text-xs cursor-pointer">
+                    {salvando ? 'Salvando...' : 'Salvar Botão'}
+                  </button>
+                  <button type="button" onClick={fecharNovoBotao} className="px-4 py-2.5 rounded-2xl bg-slate-200 text-slate-600 font-semibold text-xs cursor-pointer">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+
             <div className="flex items-center gap-3 pt-2">
               <button 
-                onClick={() => {
-                  setFeedback({
-                    tipo: 'sucesso',
-                    titulo: 'Novo Botão',
-                    mensagem: 'Prancha atualizada com o novo botão!'
-                  });
-                }}
+                onClick={() => setShowNovoBotao(!showNovoBotao)}
                 className="flex-1 py-3 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white font-semibold text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4" />
@@ -457,7 +398,7 @@ export default function Categoria() {
               </button>
 
               <button 
-                onClick={() => setCategoriaAcessada(null)}
+                onClick={() => { setCategoriaAcessadaId(null); fecharNovoBotao(); }}
                 className="px-6 py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold text-xs transition-all cursor-pointer"
               >
                 Fechar
