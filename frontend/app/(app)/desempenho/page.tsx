@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { api, erroParaFeedback } from '@/lib/api';
-import { ChevronDown, Filter, Download, PieChart, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { useUsuario } from '@/lib/UsuarioContext';
+import { ChevronDown, Filter, Download, PieChart, CheckCircle2, XCircle, AlertTriangle, Menu, X } from 'lucide-react';
 import { 
   LineChart, 
   Line, 
@@ -21,15 +22,28 @@ type Ponto = { name: string; valor: number };
 type Dados = { tem_dados: boolean; total: number; media_por_dia: number; serie: Ponto[] };
 
 export default function Desempenho() {
+  const { perfil } = useUsuario();
+  const modoEscuro = perfil?.modo_escuro ?? false;
+
   const [periodo, setPeriodo] = useState<Periodo>('semana');
   const [dados, setDados] = useState<Dados>({ tem_dados: false, total: 0, media_por_dia: 0, serie: [] });
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
   const [feedback, setFeedback] = useState<{
     tipo: 'sucesso' | 'erro' | 'atencao' | null;
     titulo: string;
     mensagem: string;
   }>({ tipo: null, titulo: '', mensagem: '' });
+
+  // Aplica classe dark globalmente
+  useEffect(() => {
+    if (modoEscuro) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [modoEscuro]);
 
   useEffect(() => {
     let ativo = true;
@@ -45,7 +59,6 @@ export default function Desempenho() {
   const handleGerarPDF = async () => {
     setGerandoPdf(true);
     try {
-      // o endpoint exige o token: baixa como blob e dispara o download no navegador
       const { data } = await api.get('/desempenho/relatorio', { params: { periodo }, responseType: 'blob' });
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
@@ -64,23 +77,50 @@ export default function Desempenho() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex font-sans relative">
+    <div className={`h-screen w-screen overflow-hidden ${modoEscuro ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} flex flex-col md:flex-row font-sans transition-colors duration-200`}>
       
-      {/* SIDEBAR LATERAL */}
-      <Sidebar ativo="desempenho" />
+      {/* BARRA TOPO MOBILE COM HAMBÚRGUER */}
+      <div className={`md:hidden flex items-center justify-between p-4 ${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b sticky top-0 z-40 shadow-sm w-full shrink-0`}>
+        <span className="font-bold text-sm tracking-wide">C.A.S.A. Desempenho</span>
+        <button 
+          onClick={() => setMenuMobileAberto(!menuMobileAberto)}
+          className={`p-2 rounded-xl ${modoEscuro ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'} cursor-pointer transition-colors`}
+          aria-label="Abrir Menu"
+        >
+          {menuMobileAberto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      </div>
 
-      {/* CONTEÚDO PRINCIPAL */}
-      <main className="flex-1 p-8 flex flex-col gap-6 max-w-5xl mx-auto relative">
+      {/* SIDEBAR LATERAL FIXA OCUPANDO 100% DA ALTURA */}
+      <div className={`
+        fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 shrink-0 h-full flex flex-col
+        ${menuMobileAberto ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="h-full flex flex-col">
+          <Sidebar ativo="desempenho" escuro={modoEscuro} />
+        </div>
+      </div>
+
+      {/* OVERLAY MOBILE */}
+      {menuMobileAberto && (
+        <div 
+          onClick={() => setMenuMobileAberto(false)}
+          className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-40 md:hidden"
+        />
+      )}
+
+      {/* CONTEÚDO PRINCIPAL COM ROLAGEM PRÓPRIA */}
+      <main className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-10 flex flex-col gap-6 w-full">
         
-        <BarraTopo />
+        <BarraTopo escuro={modoEscuro} />
 
         <section 
-          className="w-full h-28 rounded-3xl p-8 flex items-center justify-center text-white shadow-lg relative overflow-hidden text-center"
+          className="w-full h-24 sm:h-32 rounded-3xl p-6 sm:p-8 flex items-center justify-center text-white shadow-lg relative overflow-hidden text-center shrink-0"
           style={{
             background: 'linear-gradient(90deg, #F5AC46 0%, #6586F3 52%, #4D66B8 88%, #3B4E8D 100%)'
           }}
         >
-          <h1 className="text-3xl font-extrabold drop-shadow-sm">Desempenho</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold drop-shadow-sm">Desempenho</h1>
         </section>
 
         <p className="text-center text-slate-400 text-xs max-w-md mx-auto leading-relaxed font-medium">
@@ -88,12 +128,12 @@ export default function Desempenho() {
         </p>
 
         {/* Filtro */}
-        <div className="flex justify-start items-center mt-2">
-          <div className="relative">
+        <div className="flex justify-start items-center mt-2 w-full">
+          <div className="relative w-full sm:w-auto">
             <select
               value={periodo}
               onChange={(e) => setPeriodo(e.target.value as Periodo)}
-              className="appearance-none bg-white border border-slate-200 rounded-2xl px-10 py-3 text-xs font-medium text-slate-500 pr-10 cursor-pointer focus:outline-none shadow-xs"
+              className={`appearance-none ${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-500'} border rounded-2xl px-10 py-3 text-xs font-medium pr-10 cursor-pointer focus:outline-none shadow-xs w-full sm:w-auto`}
             >
               <option value="dia">Hoje</option>
               <option value="semana">Últimos 7 dias</option>
@@ -107,36 +147,42 @@ export default function Desempenho() {
 
         {/* ÁREA DO GRÁFICO (COM DADOS / VAZIO) */}
         {dados.tem_dados ? (
-          <div className="w-full bg-white border border-slate-100 rounded-3xl p-6 shadow-xs flex flex-col gap-6 mt-2 relative">
-            <p className="text-xs text-slate-500 text-center">
-              Total: <strong className="text-slate-700">{dados.total}</strong> acionamentos · Média por dia: <strong className="text-slate-700">{dados.media_por_dia}</strong>
+          <div className={`w-full ${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-xs flex flex-col gap-6 mt-2 relative pb-16`}>
+            <p className={`text-xs ${modoEscuro ? 'text-slate-400' : 'text-slate-500'} text-center`}>
+              Total: <strong className={modoEscuro ? 'text-slate-200' : 'text-slate-700'}>{dados.total}</strong> acionamentos · Média por dia: <strong className={modoEscuro ? 'text-slate-200' : 'text-slate-700'}>{dados.media_por_dia}</strong>
             </p>
             <div className="w-full h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dados.serie} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={modoEscuro ? '#1E293B' : '#F1F5F9'} />
                   <XAxis 
                     dataKey="name" 
                     axisLine={{ stroke: '#F97316', strokeWidth: 3 }} 
                     tickLine={false} 
-                    tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
+                    tick={{ fill: modoEscuro ? '#94A3B8' : '#64748B', fontSize: 12, fontWeight: 600 }}
                   />
                   <YAxis 
                     axisLine={{ stroke: '#F97316', strokeWidth: 3 }} 
                     tickLine={false} 
-                    tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
+                    tick={{ fill: modoEscuro ? '#94A3B8' : '#64748B', fontSize: 12, fontWeight: 600 }}
                     allowDecimals={false}
                     domain={[0, 'auto']}
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#FFF', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                    contentStyle={{ 
+                      backgroundColor: modoEscuro ? '#0F172A' : '#FFF', 
+                      borderColor: modoEscuro ? '#1E293B' : 'none',
+                      color: modoEscuro ? '#F1F5F9' : '#000',
+                      borderRadius: '12px', 
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)' 
+                    }}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="valor" 
                     stroke="#F97316" 
                     strokeWidth={4} 
-                    dot={{ fill: '#F97316', r: 5, strokeWidth: 2, stroke: '#FFF' }}
+                    dot={{ fill: '#F97316', r: 5, strokeWidth: 2, stroke: modoEscuro ? '#0F172A' : '#FFF' }}
                     activeDot={{ r: 7 }}
                   />
                 </LineChart>
@@ -155,28 +201,27 @@ export default function Desempenho() {
             </div>
           </div>
         ) : (
-          <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 my-4">
-            <PieChart className="w-12 h-12 text-slate-300" />
-            <h3 className="font-bold text-slate-700 text-base">Sem Dados de Desempenho</h3>
+          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border border-dashed rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-3 my-4`}>
+            <PieChart className="w-12 h-12 text-slate-400" />
+            <h3 className={`font-bold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} text-base`}>Sem Dados de Desempenho</h3>
             <p className="text-xs text-slate-400 max-w-sm">
               Inicie a utilização do dispositivo físico para gerar os primeiros gráficos de progresso e relatórios.
             </p>
           </div>
         )}
 
-
       </main>
 
       {/* MODAL FEEDBACK */}
       {feedback.tipo && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-slate-100 text-center flex flex-col items-center gap-4">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
             {feedback.tipo === 'sucesso' && <CheckCircle2 className="w-12 h-12 text-emerald-500" />}
             {feedback.tipo === 'erro' && <XCircle className="w-12 h-12 text-rose-500" />}
             {feedback.tipo === 'atencao' && <AlertTriangle className="w-12 h-12 text-amber-500" />}
             <div className="flex flex-col gap-1">
-              <h3 className="text-lg font-bold text-slate-800">{feedback.titulo}</h3>
-              <p className="text-xs text-slate-500">{feedback.mensagem}</p>
+              <h3 className="text-lg font-bold">{feedback.titulo}</h3>
+              <p className="text-xs text-slate-400">{feedback.mensagem}</p>
             </div>
             <button 
               onClick={() => setFeedback({ tipo: null, titulo: '', mensagem: '' })} 
