@@ -10,17 +10,24 @@ export type Perfil = {
   notificacoes_ativas: boolean;
   modo_escuro: boolean;
   tamanho_fonte: number;
+  alto_contraste: boolean;
+  feedback_sonoro: boolean;
 };
 
 type Ctx = {
   perfil: Perfil | null;
   recarregar: () => Promise<void>;
   atualizarLocal: (p: Partial<Perfil>) => void;
+  atualizarPerfil: (p: Partial<Perfil>) => Promise<void>;
 };
 
-const UsuarioContext = createContext<Ctx>({ perfil: null, recarregar: async () => {}, atualizarLocal: () => {} });
+const UsuarioContext = createContext<Ctx>({ 
+  perfil: null, 
+  recarregar: async () => {}, 
+  atualizarLocal: () => {},
+  atualizarPerfil: async () => {}
+});
 
-/** Carrega GET /me uma vez (cria o perfil no 1º acesso) e compartilha com todas as telas logadas. */
 export function UsuarioProvider({ children, aoFalhar }: { children: React.ReactNode; aoFalhar: () => void }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
 
@@ -29,7 +36,7 @@ export function UsuarioProvider({ children, aoFalhar }: { children: React.ReactN
       const { data } = await api.get<Perfil>('/me');
       setPerfil(data);
     } catch {
-      aoFalhar(); // 401/403 (sessão inválida ou e-mail não confirmado): volta ao login
+      aoFalhar();
     }
   }, [aoFalhar]);
 
@@ -46,7 +53,17 @@ export function UsuarioProvider({ children, aoFalhar }: { children: React.ReactN
 
   const atualizarLocal = (p: Partial<Perfil>) => setPerfil((atual) => (atual ? { ...atual, ...p } : atual));
 
-  return <UsuarioContext.Provider value={{ perfil, recarregar, atualizarLocal }}>{children}</UsuarioContext.Provider>;
+  const atualizarPerfil = async (p: Partial<Perfil>) => {
+    try {
+      await api.patch('/me', p);
+      atualizarLocal(p);
+    } catch (err) {
+      console.error('Erro ao atualizar perfil', err);
+      throw err;
+    }
+  };
+
+  return <UsuarioContext.Provider value={{ perfil, recarregar, atualizarLocal, atualizarPerfil }}>{children}</UsuarioContext.Provider>;
 }
 
 export const useUsuario = () => useContext(UsuarioContext);

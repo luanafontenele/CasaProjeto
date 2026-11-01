@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, erroParaFeedback } from '@/lib/api';
 import { sair } from '@/lib/auth';
 import { useUsuario } from '@/lib/UsuarioContext';
-import { Bell, X, FileText, Info, HelpCircle, Moon, Trash2, Plus, Minus, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Menu } from 'lucide-react';
+import { Bell, X, FileText, Info, HelpCircle, Moon, Trash2, Plus, Minus, AlertTriangle, CheckCircle2, XCircle, ShieldCheck, Menu, Volume2, Eye } from 'lucide-react';
 
 import Sidebar from '@/components/Sidebar';
 import BarraTopo from '@/components/BarraTopo';
@@ -13,24 +13,67 @@ import BarraTopo from '@/components/BarraTopo';
 export default function Configuracoes() {
   const router = useRouter();
   const { perfil, atualizarLocal } = useUsuario();
+  
+  // PEGANDO TUDO DIRETO DO CONTEXTO GLOBAL
   const notificacoesAtivas = perfil?.notificacoes_ativas ?? true;
   const modoEscuro = perfil?.modo_escuro ?? false;
   const tamanhoFonte = perfil?.tamanho_fonte ?? 10;
+  const altoContraste = perfil?.alto_contraste ?? false;
+  const feedbackSonoro = perfil?.feedback_sonoro ?? false;
+  
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
   useEffect(() => {
-    if (modoEscuro) {
+    if (modoEscuro || altoContraste) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [modoEscuro]);
+  }, [modoEscuro, altoContraste]);
 
-  const salvarPreferencia = async (mudanca: { notificacoes_ativas?: boolean; modo_escuro?: boolean; tamanho_fonte?: number }) => {
-    const anterior = { notificacoes_ativas: notificacoesAtivas, modo_escuro: modoEscuro, tamanho_fonte: tamanhoFonte };
+  const emitirSomBip = (frequencia = 587.33, duracao = 0.1, forcarSom = false) => {
+    if (!feedbackSonoro && !forcarSom) return;
+    try {
+      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = frequencia;
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duracao);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duracao);
+    } catch {
+      // Ignora caso o navegador bloqueie autoplay sem interação prévia
+    }
+  };
+
+  const salvarPreferencia = async (mudanca: { 
+    notificacoes_ativas?: boolean; 
+    modo_escuro?: boolean; 
+    tamanho_fonte?: number;
+    alto_contraste?: boolean;
+    feedback_sonoro?: boolean;
+  }) => {
+    const anterior = { 
+      notificacoes_ativas: notificacoesAtivas, 
+      modo_escuro: modoEscuro, 
+      tamanho_fonte: tamanhoFonte,
+      alto_contraste: altoContraste,
+      feedback_sonoro: feedbackSonoro
+    };
+    
     atualizarLocal(mudanca);
+    
+    if (mudanca.feedback_sonoro === true) {
+      emitirSomBip(660, 0.1, true);
+    } else {
+      emitirSomBip(800, 0.08);
+    }
+
     try {
       await api.patch('/me', mudanca);
     } catch (err) {
@@ -60,11 +103,13 @@ export default function Configuracoes() {
     const valor = Math.max(8, Math.min(20, novo));
     if (valor === tamanhoFonte) return;
     atualizarLocal({ tamanho_fonte: valor });
+    emitirSomBip(650, 0.05);
     if (temporizador.current) clearTimeout(temporizador.current);
     temporizador.current = setTimeout(() => {
       api.patch('/me', { tamanho_fonte: valor }).catch((err) => setFeedback(erroParaFeedback(err, 'Não foi Possível Salvar')));
     }, 500);
   };
+  
   const aumentarFonte = () => mudarFonte(tamanhoFonte + 1);
   const diminuirFonte = () => mudarFonte(tamanhoFonte - 1);
 
@@ -80,27 +125,31 @@ export default function Configuracoes() {
   };
 
   return (
-    <div className={`h-screen w-screen overflow-hidden ${modoEscuro ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} flex flex-col md:flex-row font-sans transition-colors duration-200`}>
+    <div className={`h-screen w-screen overflow-hidden ${altoContraste ? 'bg-black text-amber-300' : modoEscuro ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} flex flex-col md:flex-row font-sans transition-colors duration-200`} style={{ fontSize: `${tamanhoFonte}px` }}>
       
       {/* BARRA TOPO MOBILE COM HAMBÚRGUER */}
-      <div className={`md:hidden flex items-center justify-between p-4 ${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b sticky top-0 z-40 shadow-sm w-full shrink-0`}>
+      <div className={`md:hidden flex items-center justify-between p-4 ${altoContraste ? 'bg-black border-amber-500' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b sticky top-0 z-40 shadow-sm w-full shrink-0`}>
         <span className="font-bold text-sm tracking-wide">C.A.S.A. Configurações</span>
         <button 
-          onClick={() => setMenuMobileAberto(!menuMobileAberto)}
-          className={`p-2 rounded-xl ${modoEscuro ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'} cursor-pointer transition-colors`}
+          onClick={() => {
+            emitirSomBip(600, 0.05);
+            setMenuMobileAberto(!menuMobileAberto);
+          }}
+          className={`p-2 rounded-xl ${altoContraste ? 'bg-amber-400 text-black' : modoEscuro ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'} cursor-pointer transition-colors`}
           aria-label="Abrir Menu"
         >
           {menuMobileAberto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* SIDEBAR FIXA OCUPANDO 100% DA ALTURA DA TELA SEM ESPAÇO BRANCO EMBAIXO */}
+      {/* SIDEBAR FIXA OCUPANDO 100% DA ALTURA DA TELA */}
       <div className={`
         fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 shrink-0 h-full flex flex-col
         ${menuMobileAberto ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col">
-          <Sidebar ativo="configuracoes" escuro={modoEscuro} />
+          {/* 👇 SIDEBAR SENDO CHAMADA BEM LIMPINHA AQUI 👇 */}
+          <Sidebar ativo="configuracoes" />
         </div>
       </div>
 
@@ -112,42 +161,45 @@ export default function Configuracoes() {
         />
       )}
 
-      {/* CONTEÚDO PRINCIPAL COM ROLAGEM PRÓPRIA (ULTRAPASSA A TELA) E LARGURA TOTAL */}
+      {/* CONTEÚDO PRINCIPAL COM ROLAGEM PRÓPRIA */}
       <main className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-10 flex flex-col gap-6 w-full">
         
-        <BarraTopo escuro={modoEscuro} />
+        <BarraTopo escuro={modoEscuro || altoContraste} />
 
         <section 
           className="w-full h-24 sm:h-32 rounded-3xl p-6 sm:p-8 flex items-center justify-center text-white shadow-lg relative overflow-hidden text-center shrink-0"
           style={{
-            background: 'linear-gradient(90deg, #F5AC46 0%, #6586F3 52%, #4D66B8 88%, #3B4E8D 100%)'
+            background: altoContraste ? '#000000' : 'linear-gradient(90deg, #F5AC46 0%, #6586F3 52%, #4D66B8 88%, #3B4E8D 100%)',
+            border: altoContraste ? '2px solid #FACC15' : 'none'
           }}
         >
-          <h1 className="text-2xl sm:text-3xl font-extrabold drop-shadow-sm">Configurações</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold drop-shadow-sm">Configurações & Acessibilidade</h1>
         </section>
 
-        {/* Grid fluido com margem inferior para a rolagem ficar confortável */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-start w-full pb-16 shrink-0">
           
           {/* SEÇÃO SISTEMA */}
           <div className="flex flex-col gap-3 w-full">
-            <h2 className={`text-center font-bold ${modoEscuro ? 'text-slate-300' : 'text-slate-600'} text-sm`}>Sistema</h2>
+            <h2 className={`text-center font-bold ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-600'} text-sm`}>Sistema</h2>
 
-            <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-[#FAF8FC] border-purple-100/80'} border rounded-3xl p-5 sm:p-6 flex flex-col gap-5 shadow-xs w-full`}>
+            <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-[#FAF8FC] border-purple-100/80'} border rounded-3xl p-5 sm:p-6 flex flex-col gap-5 shadow-xs w-full`}>
               
               <div className="flex flex-col gap-2">
                 <span className="text-[11px] font-medium text-slate-400">Ativar/Desativar</span>
-                <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
+                <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
                   <div className="flex items-center gap-3">
-                    <Bell className={`w-4 h-4 ${modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
-                    <span className={`text-xs font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Notificações</span>
+                    <Bell className={`w-4 h-4 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
+                    <span className={`text-xs font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Notificações</span>
                   </div>
                   
                   <button 
-                    onClick={() => salvarPreferencia({ notificacoes_ativas: !notificacoesAtivas })}
+                    onClick={() => {
+                      salvarPreferencia({ notificacoes_ativas: !notificacoesAtivas });
+                    }}
                     className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                       notificacoesAtivas ? 'bg-[#5F7DE3]' : 'bg-slate-300 dark:bg-slate-700'
                     }`}
+                    aria-label="Alternar Notificações"
                   >
                     <div 
                       className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
@@ -163,42 +215,51 @@ export default function Configuracoes() {
                 
                 <div className="flex flex-col gap-2.5">
                   <button 
-                    onClick={() => setModalConteudo({
-                      titulo: 'Termos de Privacidade',
-                      subtitulo: 'Segurança e Proteção de Dados',
-                      texto: 'O projeto C.A.S.A respeita totalmente a sua privacidade. Todos os dados de uso dos botões e histórico de acionamentos são mantidos de forma segura e criptografada para o acompanhamento dos responsáveis e educadores.',
-                      icone: ShieldCheck
-                    })}
-                    className={`${modoEscuro ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white/90 border-purple-100 hover:bg-slate-50'} border rounded-2xl p-3.5 flex items-center gap-3 shadow-xs transition-all cursor-pointer text-left w-full`}
+                    onClick={() => {
+                      emitirSomBip(700, 0.05);
+                      setModalConteudo({
+                        titulo: 'Termos de Privacidade',
+                        subtitulo: 'Segurança e Proteção de Dados',
+                        texto: 'O projeto C.A.S.A respeita totalmente a sua privacidade. Todos os dados de uso dos botões e histórico de acionamentos são mantidos de forma segura e criptografada para o acompanhamento dos responsáveis e educadores.',
+                        icone: ShieldCheck
+                      });
+                    }}
+                    className={`${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300 hover:bg-zinc-800' : modoEscuro ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-200' : 'bg-white/90 border-purple-100 hover:bg-slate-50 text-slate-700'} border rounded-2xl p-3.5 flex items-center gap-3 shadow-xs transition-all cursor-pointer text-left w-full`}
                   >
-                    <FileText className={`w-4 h-4 ${modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
-                    <span className={`text-xs font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Termos de privacidade</span>
+                    <FileText className="w-4 h-4 text-[#5F7DE3]" />
+                    <span className="text-xs font-semibold">Termos de privacidade</span>
                   </button>
 
                   <button 
-                    onClick={() => setModalConteudo({
-                      titulo: 'Informações do Sistema',
-                      subtitulo: 'Plataforma C.A.S.A v1.0',
-                      texto: 'O C.A.S.A (Comunicação Alternativa e Suporte Assistivo) é uma plataforma desenvolvida para conectar dispositivos físicos baseados em microcontroladores ESP32 a pranchas de comunicação dinâmica para pessoas com necessidades especiais.',
-                      icone: Info
-                    })}
-                    className={`${modoEscuro ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white/90 border-purple-100 hover:bg-slate-50'} border rounded-2xl p-3.5 flex items-center gap-3 shadow-xs transition-all cursor-pointer text-left w-full`}
+                    onClick={() => {
+                      emitirSomBip(700, 0.05);
+                      setModalConteudo({
+                        titulo: 'Informações do Sistema',
+                        subtitulo: 'Plataforma C.A.S.A v1.0',
+                        texto: 'O C.A.S.A (Comunicação Alternativa e Suporte Assistivo) é uma plataforma desenvolvida para conectar dispositivos físicos baseados em microcontroladores ESP32 a pranchas de comunicação dinâmica para pessoas com necessidades especiais.',
+                        icone: Info
+                      });
+                    }}
+                    className={`${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300 hover:bg-zinc-800' : modoEscuro ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-200' : 'bg-white/90 border-purple-100 hover:bg-slate-50 text-slate-700'} border rounded-2xl p-3.5 flex items-center gap-3 shadow-xs transition-all cursor-pointer text-left w-full`}
                   >
-                    <Info className={`w-4 h-4 ${modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
-                    <span className={`text-xs font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Informações</span>
+                    <Info className="w-4 h-4 text-[#5F7DE3]" />
+                    <span className="text-xs font-semibold">Informações</span>
                   </button>
 
                   <button 
-                    onClick={() => setModalConteudo({
-                      titulo: 'Suporte Técnico',
-                      subtitulo: 'Como podemos ajudar?',
-                      texto: 'Precisa de ajuda com a sincronização do hardware ESP32 ou personalização das vozes? Entre em contato com nossa equipe de suporte através do e-mail suporte@projetocasa.org ou consulte nossos tutoriais.',
-                      icone: HelpCircle
-                    })}
-                    className={`${modoEscuro ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white/90 border-purple-100 hover:bg-slate-50'} border rounded-2xl p-3.5 flex items-center gap-3 shadow-xs transition-all cursor-pointer text-left w-full`}
+                    onClick={() => {
+                      emitirSomBip(700, 0.05);
+                      setModalConteudo({
+                        titulo: 'Suporte Técnico',
+                        subtitulo: 'Como podemos ajudar?',
+                        texto: 'Precisa de ajuda com a sincronização do hardware ESP32 ou personalização das vozes? Entre em contato com nossa equipe de suporte através do e-mail suporte@projetocasa.org ou consulte nossos tutoriais.',
+                        icone: HelpCircle
+                      });
+                    }}
+                    className={`${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300 hover:bg-zinc-800' : modoEscuro ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-200' : 'bg-white/90 border-purple-100 hover:bg-slate-50 text-slate-700'} border rounded-2xl p-3.5 flex items-center gap-3 shadow-xs transition-all cursor-pointer text-left w-full`}
                   >
-                    <HelpCircle className={`w-4 h-4 ${modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
-                    <span className={`text-xs font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Suporte</span>
+                    <HelpCircle className="w-4 h-4 text-[#5F7DE3]" />
+                    <span className="text-xs font-semibold">Suporte</span>
                   </button>
                 </div>
               </div>
@@ -210,23 +271,31 @@ export default function Configuracoes() {
           <div className="flex flex-col gap-6 w-full">
             
             <div className="flex flex-col gap-3 w-full">
-              <h2 className={`text-center font-bold ${modoEscuro ? 'text-slate-300' : 'text-slate-600'} text-sm`}>Acessibilidade</h2>
+              <h2 className={`text-center font-bold ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-600'} text-sm`}>Acessibilidade</h2>
 
-              <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-[#FAF8FC] border-purple-100/80'} border rounded-3xl p-5 sm:p-6 flex flex-col gap-5 shadow-xs w-full`}>
+              <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-[#FAF8FC] border-purple-100/80'} border rounded-3xl p-5 sm:p-6 flex flex-col gap-5 shadow-xs w-full`}>
                 
+                {/* Modo Claro / Escuro */}
                 <div className="flex flex-col gap-2">
-                  <span className="text-[11px] font-medium text-slate-400">Modo Claro/Escuro</span>
-                  <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
+                  <span className="text-[11px] font-medium text-slate-400">Tema Visual</span>
+                  <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
                     <div className="flex items-center gap-3">
-                      <Moon className={`w-4 h-4 ${modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
-                      <span className={`text-xs font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Modo Escuro</span>
+                      <Moon className={`w-4 h-4 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
+                      <span className={`text-xs font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Modo Escuro</span>
                     </div>
 
                     <button 
-                      onClick={() => salvarPreferencia({ modo_escuro: !modoEscuro })}
+                      onClick={() => {
+                        if (!modoEscuro && altoContraste) {
+                          salvarPreferencia({ modo_escuro: true, alto_contraste: false });
+                        } else {
+                          salvarPreferencia({ modo_escuro: !modoEscuro });
+                        }
+                      }}
                       className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
                         modoEscuro ? 'bg-[#5F7DE3]' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
+                      aria-label="Alternar Modo Escuro"
                     >
                       <div 
                         className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
@@ -237,26 +306,87 @@ export default function Configuracoes() {
                   </div>
                 </div>
 
+                {/* ALTO CONTRASTE */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[11px] font-medium text-slate-400">Daltonismo & Visão Reduzida</span>
+                  <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
+                    <div className="flex items-center gap-3">
+                      <Eye className="w-4 h-4 text-amber-500" />
+                      <span className={`text-xs font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Alto Contraste</span>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        if (!altoContraste && modoEscuro) {
+                          salvarPreferencia({ alto_contraste: true, modo_escuro: false });
+                        } else {
+                          salvarPreferencia({ alto_contraste: !altoContraste });
+                        }
+                      }}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                        altoContraste ? 'bg-amber-400' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                      aria-label="Alternar Alto Contraste"
+                    >
+                      <div 
+                        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                          altoContraste ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* FEEDBACK SONORO */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[11px] font-medium text-slate-400">Assistência Sonora e Tátil</span>
+                  <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
+                    <div className="flex items-center gap-3">
+                      <Volume2 className="w-4 h-4 text-emerald-500" />
+                      <span className={`text-xs font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Feedback Sonoro (Bips)</span>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        salvarPreferencia({ feedback_sonoro: !feedbackSonoro });
+                      }}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                        feedbackSonoro ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                      aria-label="Alternar Feedback Sonoro"
+                    >
+                      <div 
+                        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                          feedbackSonoro ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tamanho da Fonte */}
                 <div className="flex flex-col gap-2">
                   <span className="text-[11px] font-medium text-slate-400">Tamanho da Fonte</span>
-                  <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
-                    <span className={`font-extrabold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} text-sm`}>Tt</span>
+                  <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/90 border-purple-100'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
+                    <span className={`font-extrabold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'} text-sm`}>Tt</span>
 
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={aumentarFonte}
-                        className={`w-7 h-7 rounded-lg ${modoEscuro ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-slate-200/80 hover:bg-slate-300 text-slate-600'} flex items-center justify-center text-xs font-bold transition-colors cursor-pointer`}
+                        className={`w-7 h-7 rounded-lg ${altoContraste ? 'bg-amber-400 text-black' : modoEscuro ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-slate-200/80 hover:bg-slate-300 text-slate-600'} flex items-center justify-center text-xs font-bold transition-colors cursor-pointer`}
+                        aria-label="Aumentar fonte"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
 
-                      <span className={`text-xs font-medium px-3 py-1 rounded-md min-w-12 text-center ${modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-100 text-slate-400'} border`}>
+                      <span className={`text-xs font-medium px-3 py-1 rounded-md min-w-12 text-center ${altoContraste ? 'bg-black border-amber-400 text-amber-400' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-100 text-slate-400'} border`}>
                         {tamanhoFonte}px
                       </span>
 
                       <button 
                         onClick={diminuirFonte}
-                        className={`w-7 h-7 rounded-lg ${modoEscuro ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-slate-200/80 hover:bg-slate-300 text-slate-600'} flex items-center justify-center text-xs font-bold transition-colors cursor-pointer`}
+                        className={`w-7 h-7 rounded-lg ${altoContraste ? 'bg-amber-400 text-black' : modoEscuro ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'bg-slate-200/80 hover:bg-slate-300 text-slate-600'} flex items-center justify-center text-xs font-bold transition-colors cursor-pointer`}
+                        aria-label="Diminuir fonte"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
@@ -268,12 +398,15 @@ export default function Configuracoes() {
             </div>
 
             <div className="flex flex-col gap-3 w-full">
-              <h2 className={`text-center font-bold ${modoEscuro ? 'text-slate-300' : 'text-slate-600'} text-sm`}>Conta</h2>
+              <h2 className={`text-center font-bold ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-600'} text-sm`}>Conta</h2>
 
-              <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-[#FAF8FC] border-purple-100/80'} border rounded-3xl p-5 sm:p-6 shadow-xs w-full`}>
+              <div className={`${altoContraste ? 'bg-black border-amber-500' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-[#FAF8FC] border-purple-100/80'} border rounded-3xl p-5 sm:p-6 shadow-xs w-full`}>
                 <button 
-                  onClick={() => setShowExcluirContaModal(true)}
-                  className={`w-full ${modoEscuro ? 'bg-slate-800 border-rose-900/50 hover:bg-rose-950/40 text-rose-400' : 'bg-white/90 border-rose-100/80 hover:bg-rose-50 text-rose-600'} border rounded-2xl p-3.5 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs`}
+                  onClick={() => {
+                    emitirSomBip(400, 0.15);
+                    setShowExcluirContaModal(true);
+                  }}
+                  className={`w-full ${altoContraste ? 'bg-zinc-900 border-rose-500 text-rose-400 hover:bg-zinc-800' : modoEscuro ? 'bg-slate-800 border-rose-900/50 hover:bg-rose-950/40 text-rose-400' : 'bg-white/90 border-rose-100/80 hover:bg-rose-50 text-rose-600'} border rounded-2xl p-3.5 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs`}
                 >
                   <Trash2 className="w-4 h-4 text-rose-600" />
                   <span className="text-xs font-semibold">Excluir conta</span>
@@ -290,22 +423,25 @@ export default function Configuracoes() {
       {/* MODAL INFORMATIVO */}
       {modalConteudo && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border relative flex flex-col gap-4 text-center items-center`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border relative flex flex-col gap-4 text-center items-center`}>
             
             <button 
-              onClick={() => setModalConteudo(null)}
+              onClick={() => {
+                emitirSomBip(500, 0.05);
+                setModalConteudo(null);
+              }}
               className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="w-14 h-14 rounded-2xl bg-[#5F7DE3]/10 text-[#5F7DE3] flex items-center justify-center shrink-0">
+            <div className={`w-14 h-14 rounded-2xl ${altoContraste ? 'bg-zinc-800 text-amber-400 border border-amber-500' : 'bg-[#5F7DE3]/10 text-[#5F7DE3]'} flex items-center justify-center shrink-0`}>
               <modalConteudo.icone className="w-7 h-7" />
             </div>
 
             <div className="flex flex-col gap-1">
               <h3 className="text-lg font-bold">{modalConteudo.titulo}</h3>
-              <span className="text-xs text-[#5F7DE3] font-semibold">{modalConteudo.subtitulo}</span>
+              <span className={`text-xs ${altoContraste ? 'text-amber-500' : 'text-[#5F7DE3]'} font-semibold`}>{modalConteudo.subtitulo}</span>
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-300 leading-relaxed max-w-sm">
@@ -313,8 +449,11 @@ export default function Configuracoes() {
             </p>
 
             <button 
-              onClick={() => setModalConteudo(null)}
-              className="w-full py-3.5 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white font-semibold text-xs transition-all shadow-md shadow-[#5F7DE3]/20 cursor-pointer mt-2"
+              onClick={() => {
+                emitirSomBip(600, 0.05);
+                setModalConteudo(null);
+              }}
+              className={`w-full py-3.5 rounded-2xl ${altoContraste ? 'bg-amber-500 hover:bg-amber-400 text-black' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'} font-semibold text-xs transition-all shadow-md cursor-pointer mt-2`}
             >
               Entendido
             </button>
@@ -326,9 +465,9 @@ export default function Configuracoes() {
       {/* MODAL EXCLUIR CONTA */}
       {showExcluirContaModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
             
-            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center ${altoContraste ? 'bg-rose-950 text-rose-500 border border-rose-500' : 'bg-rose-100 text-rose-600'} shadow-xs`}>
               <AlertTriangle className="w-7 h-7" />
             </div>
 
@@ -341,8 +480,11 @@ export default function Configuracoes() {
 
             <div className="grid grid-cols-2 gap-3 w-full mt-2">
               <button 
-                onClick={() => setShowExcluirContaModal(false)}
-                className={`py-3 rounded-2xl ${modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} font-semibold text-xs transition-all cursor-pointer`}
+                onClick={() => {
+                  emitirSomBip(500, 0.05);
+                  setShowExcluirContaModal(false);
+                }}
+                className={`py-3 rounded-2xl ${altoContraste ? 'bg-zinc-800 text-amber-300 border border-amber-500' : modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} font-semibold text-xs transition-all cursor-pointer`}
               >
                 Cancelar
               </button>
@@ -362,7 +504,7 @@ export default function Configuracoes() {
       {/* MODAL FEEDBACK */}
       {feedback.tipo && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
             {feedback.tipo === 'sucesso' && <CheckCircle2 className="w-12 h-12 text-emerald-500" />}
             {feedback.tipo === 'erro' && <XCircle className="w-12 h-12 text-rose-500" />}
             {feedback.tipo === 'atencao' && <AlertTriangle className="w-12 h-12 text-amber-500" />}
@@ -371,8 +513,11 @@ export default function Configuracoes() {
               <p className="text-xs text-slate-500 dark:text-slate-300">{feedback.mensagem}</p>
             </div>
             <button 
-              onClick={() => setFeedback({ tipo: null, titulo: '', mensagem: '' })} 
-              className="w-full py-3 rounded-2xl bg-[#5F7DE3] text-white font-semibold text-xs cursor-pointer"
+              onClick={() => {
+                emitirSomBip(600, 0.05);
+                setFeedback({ tipo: null, titulo: '', mensagem: '' });
+              }} 
+              className={`w-full py-3 rounded-2xl ${altoContraste ? 'bg-amber-500 text-black' : 'bg-[#5F7DE3] text-white'} font-semibold text-xs cursor-pointer`}
             >
               OK
             </button>

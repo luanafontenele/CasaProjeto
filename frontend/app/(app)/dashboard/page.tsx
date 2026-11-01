@@ -19,7 +19,12 @@ type ItemHistorico = { id: string; nome: string; categoria: string; total: numbe
 export default function Dashboard() {
   const { perfil } = useUsuario();
   const primeiroNome = perfil?.nome?.split(' ')[0] ?? '';
+  
+  // PEGANDO TUDO DO CONTEXTO GLOBAL 🌍
   const modoEscuro = perfil?.modo_escuro ?? false;
+  const altoContraste = perfil?.alto_contraste ?? false;
+  const feedbackSonoro = perfil?.feedback_sonoro ?? false;
+  const tamanhoFonte = perfil?.tamanho_fonte ?? 10;
 
   // DADOS REAIS (API)
   const [dispositivos, setDispositivos] = useState<Dispositivo[]>([]);
@@ -49,14 +54,34 @@ export default function Dashboard() {
     mensagem: string;
   }>({ tipo: null, titulo: '', mensagem: '' });
 
+  // FUNÇÃO DO TUTU SONORO 🎶
+  const emitirSomBip = (frequencia = 587.33, duracao = 0.05) => {
+    if (!feedbackSonoro) return;
+    try {
+      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = frequencia;
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duracao);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duracao);
+    } catch {
+      // Ignora erro
+    }
+  };
+
   // Aplica classe dark globalmente
   useEffect(() => {
-    if (modoEscuro) {
+    if (modoEscuro || altoContraste) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [modoEscuro]);
+  }, [modoEscuro, altoContraste]);
 
   const carregar = useCallback(async () => {
     try {
@@ -71,7 +96,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const primeira = setTimeout(carregar, 0);
-    const ciclo = setInterval(carregar, 30000); // status online/bateria atualizam sozinhos
+    const ciclo = setInterval(carregar, 30000); 
     return () => {
       clearTimeout(primeira);
       clearInterval(ciclo);
@@ -93,6 +118,7 @@ export default function Dashboard() {
       await api.delete(`/dispositivos/${encodeURIComponent(item.mac)}`);
       setShowDevicesModal(false);
       await carregar();
+      emitirSomBip(400, 0.1);
       setFeedback({ tipo: 'sucesso', titulo: 'Dispositivo Removido', mensagem: `O dispositivo "${item.nome}" foi desconectado com sucesso!` });
     } catch (err) {
       setFeedback(erroParaFeedback(err));
@@ -112,6 +138,7 @@ export default function Dashboard() {
       setNovoMac('');
       setNovoNome('');
       setTokenGerado({ nome: data.nome, mac: data.mac, token: data.device_token });
+      emitirSomBip(800, 0.1);
       await carregar();
     } catch (err) {
       setFeedback(erroParaFeedback(err, 'Falha ao Parear'));
@@ -121,27 +148,33 @@ export default function Dashboard() {
   };
 
   return (
-    <div className={`h-screen w-screen overflow-hidden ${modoEscuro ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} flex flex-col md:flex-row font-sans transition-colors duration-200`}>
+    <div 
+      className={`h-screen w-screen overflow-hidden ${altoContraste ? 'bg-black text-amber-300' : modoEscuro ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-800'} flex flex-col md:flex-row font-sans transition-colors duration-200`}
+      style={{ fontSize: `${tamanhoFonte}px` }}
+    >
       
       {/* BARRA TOPO MOBILE COM HAMBÚRGUER */}
-      <div className={`md:hidden flex items-center justify-between p-4 ${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b sticky top-0 z-40 shadow-sm w-full shrink-0`}>
+      <div className={`md:hidden flex items-center justify-between p-4 ${altoContraste ? 'bg-black border-amber-500' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b sticky top-0 z-40 shadow-sm w-full shrink-0`}>
         <span className="font-bold text-sm tracking-wide">C.A.S.A. Dashboard</span>
         <button 
-          onClick={() => setMenuMobileAberto(!menuMobileAberto)}
-          className={`p-2 rounded-xl ${modoEscuro ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'} cursor-pointer transition-colors`}
+          onClick={() => {
+            emitirSomBip(600, 0.05);
+            setMenuMobileAberto(!menuMobileAberto);
+          }}
+          className={`p-2 rounded-xl ${altoContraste ? 'bg-amber-400 text-black' : modoEscuro ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'} cursor-pointer transition-colors`}
           aria-label="Abrir Menu"
         >
           {menuMobileAberto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* 1. SIDEBAR LATERAL FIXA OCUPANDO 100% DA ALTURA */}
+      {/* 1. SIDEBAR LATERAL FIXA */}
       <div className={`
         fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 shrink-0 h-full flex flex-col
         ${menuMobileAberto ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col">
-          <Sidebar ativo="dashboard" escuro={modoEscuro} />
+          <Sidebar ativo="dashboard" />
         </div>
       </div>
 
@@ -153,83 +186,88 @@ export default function Dashboard() {
         />
       )}
 
-      {/* CONTEÚDO PRINCIPAL DA DASHBOARD COM ROLAGEM PRÓPRIA */}
+      {/* CONTEÚDO PRINCIPAL DA DASHBOARD */}
       <main className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-10 flex flex-col gap-8 w-full">
         
-        <BarraTopo escuro={modoEscuro} />
+        <BarraTopo escuro={modoEscuro || altoContraste} />
 
         {/* HERO BANNER */}
         <section 
           className="w-full h-44 rounded-3xl p-8 flex flex-col justify-center text-white shadow-lg relative overflow-hidden shrink-0"
           style={{
-            background: 'linear-gradient(90deg, #F5AC46 0%, #6586F3 52%, #4D66B8 88%, #3B4E8D 100%)'
+            background: altoContraste ? '#000000' : 'linear-gradient(90deg, #F5AC46 0%, #6586F3 52%, #4D66B8 88%, #3B4E8D 100%)',
+            border: altoContraste ? '2px solid #FACC15' : 'none'
           }}
         >
           <h1 className="text-2xl sm:text-3xl font-extrabold mb-2 drop-shadow-sm">Olá, {primeiroNome}!</h1>
-          <p className="text-white/90 font-normal text-xs sm:text-sm max-w-md drop-shadow-sm">
+          <p className="text-white/90 font-normal text-[1em] max-w-md drop-shadow-sm">
             Personalize o seu dispositivo C.A.S.A ao seu estilo e acompanhe tudo em tempo real.
           </p>
         </section>
 
         {/* VISÃO GERAL */}
         <section className="flex flex-col gap-4 w-full">
-          <h2 className={`text-center font-bold ${modoEscuro ? 'text-slate-300' : 'text-slate-700'} text-sm sm:text-lg`}>Visão Geral</h2>
+          <h2 className={`text-center font-bold ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-700'} text-[1.2em]`}>Visão Geral</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
             
             {/* CARD 1: Dispositivos Conectados */}
-            <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-sm flex flex-col items-center text-center justify-between gap-4 w-full`}>
-              <div className={`flex items-center gap-2 ${modoEscuro ? 'text-slate-400' : 'text-slate-600'} font-semibold text-xs`}>
+            <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-sm flex flex-col items-center text-center justify-between gap-4 w-full`}>
+              <div className={`flex items-center gap-2 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-400' : 'text-slate-600'} font-semibold text-[0.9em]`}>
                 <Cpu className="w-4 h-4 text-slate-400" />
                 Dispositivos Conectados
               </div>
 
               {temDispositivos ? (
                 <div className="flex flex-col items-center gap-1 my-2">
-                  <div className={`flex items-center gap-2 text-xs ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} font-bold`}>
-                    <span className={`w-2 h-2 rounded-full ${disp?.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                  <div className={`flex items-center gap-2 text-[1em] ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'} font-bold`}>
+                    <span className={`w-2.5 h-2.5 rounded-full ${disp?.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
                     {disp?.nome}
                   </div>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[0.8em] text-slate-400">
                     {disp?.online ? 'Conectado e Operacional' : 'Sem comunicação recente'}
                   </span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-1 my-2 py-1">
-                  <span className="text-xs text-rose-500 font-medium">Nenhum dispositivo encontrado</span>
-                  <span className="text-[10px] text-slate-400">Ligue o ESP32 para conectar</span>
+                  <span className="text-[1em] text-rose-500 font-medium">Nenhum dispositivo encontrado</span>
+                  <span className="text-[0.8em] text-slate-400">Ligue o ESP32 para conectar</span>
                 </div>
               )}
 
               <button 
-                onClick={() => setShowDevicesModal(true)}
-                className="w-full py-2.5 rounded-xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white text-xs font-semibold transition-all shadow-sm cursor-pointer"
+                onClick={() => {
+                  emitirSomBip(600, 0.05);
+                  setShowDevicesModal(true);
+                }}
+                className={`w-full py-2.5 rounded-xl ${altoContraste ? 'bg-amber-500 hover:bg-amber-400 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'} text-[1em] font-semibold transition-all shadow-sm cursor-pointer`}
               >
                 Gerenciar Dispositivos
               </button>
             </div>
 
             {/* CARD 2: Informações Gerais */}
-            <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-sm flex flex-col items-center text-center justify-between gap-4 w-full`}>
-              <div className={`flex items-center gap-2 ${modoEscuro ? 'text-slate-400' : 'text-slate-600'} font-semibold text-xs`}>
+            <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-sm flex flex-col items-center text-center justify-between gap-4 w-full`}>
+              <div className={`flex items-center gap-2 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-400' : 'text-slate-600'} font-semibold text-[0.9em]`}>
                 <Info className="w-4 h-4 text-slate-400" />
                 Status da Conexão
               </div>
 
               {temDispositivos ? (
                 <div className="flex flex-col items-center gap-1 my-2">
-                  <span className={`text-xs ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} font-bold`}>{disp?.sinal_wifi != null ? `Sinal ${disp.sinal_wifi}% (Wi-Fi)` : 'Sinal não informado'}</span>
-                  <span className="text-[11px] text-slate-400">Rede: {disp?.ssid ?? 'não informada'}</span>
+                  <span className={`text-[1em] ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'} font-bold`}>{disp?.sinal_wifi != null ? `Sinal ${disp.sinal_wifi}% (Wi-Fi)` : 'Sinal não informado'}</span>
+                  <span className="text-[0.8em] text-slate-400">Rede: {disp?.ssid ?? 'não informada'}</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-1 my-2 py-1">
-                  <span className="text-xs text-slate-400 font-medium">Desconectado da nuvem</span>
-                  <span className="text-[10px] text-slate-400">Aguardando pareamento</span>
+                  <span className="text-[1em] text-slate-400 font-medium">Desconectado da nuvem</span>
+                  <span className="text-[0.8em] text-slate-400">Aguardando pareamento</span>
                 </div>
               )}
 
               <button 
                 onClick={() => {
+                  emitirSomBip(600, 0.05);
                   if (temDispositivos) {
                     setDetalheMac(disp.mac);
                     setShowDeviceDetails(true);
@@ -241,33 +279,33 @@ export default function Dashboard() {
                     });
                   }
                 }}
-                className="w-full py-2.5 rounded-xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white text-xs font-semibold transition-all shadow-sm cursor-pointer"
+                className={`w-full py-2.5 rounded-xl ${altoContraste ? 'bg-amber-500 hover:bg-amber-400 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'} text-[1em] font-semibold transition-all shadow-sm cursor-pointer`}
               >
                 Mais Detalhes
               </button>
             </div>
 
             {/* CARD 3: Último Acionamento */}
-            <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-sm flex flex-col items-center text-center justify-between gap-4 w-full`}>
-              <div className={`flex items-center gap-2 ${modoEscuro ? 'text-slate-400' : 'text-slate-600'} font-semibold text-xs`}>
+            <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-sm flex flex-col items-center text-center justify-between gap-4 w-full`}>
+              <div className={`flex items-center gap-2 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-400' : 'text-slate-600'} font-semibold text-[0.9em]`}>
                 <Power className="w-4 h-4 text-slate-400" />
                 Último Acionamento
               </div>
 
               {ultimo ? (
                 <div className="flex flex-col items-center gap-1 my-2">
-                  <span className={`text-xs ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} font-bold`}>{ultimo.nome}</span>
-                  <span className="text-[11px] text-slate-400">{ultimo.data} às {ultimo.hora}</span>
+                  <span className={`text-[1em] ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'} font-bold`}>{ultimo.nome}</span>
+                  <span className="text-[0.8em] text-slate-400">{ultimo.data} às {ultimo.hora}</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-1 my-2 py-1">
-                  <span className="text-xs text-slate-400 font-medium">Sem registros recentes</span>
-                  <span className="text-[10px] text-slate-400">Aguardando uso do botão</span>
+                  <span className="text-[1em] text-slate-400 font-medium">Sem registros recentes</span>
+                  <span className="text-[0.8em] text-slate-400">Aguardando uso do botão</span>
                 </div>
               )}
 
-              <Link href="/historico" className="w-full">
-                <button className="w-full py-2.5 rounded-xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white text-xs font-semibold transition-all shadow-sm cursor-pointer">
+              <Link href="/historico" onClick={() => emitirSomBip(600, 0.05)} className="w-full">
+                <button className={`w-full py-2.5 rounded-xl ${altoContraste ? 'bg-amber-500 hover:bg-amber-400 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'} text-[1em] font-semibold transition-all shadow-sm cursor-pointer`}>
                   Ver Histórico
                 </button>
               </Link>
@@ -278,13 +316,13 @@ export default function Dashboard() {
 
         {/* FEEDBACK DE SUGESTÕES DA IA/SISTEMA */}
         <section className="flex flex-col gap-3 mt-2 w-full pb-16">
-          <h3 className={`font-bold ${modoEscuro ? 'text-slate-300' : 'text-slate-700'} text-sm`}>Feedback de Atendimento:</h3>
-          <div className={`w-full ${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100/70 border-slate-200/60 text-slate-600'} border rounded-3xl p-6 flex flex-col gap-2 text-xs`}>
+          <h3 className={`font-bold ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-700'} text-[1.1em]`}>Feedback de Atendimento:</h3>
+          <div className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100/70 border-slate-200/60 text-slate-600'} border rounded-3xl p-6 flex flex-col gap-2 text-[1em]`}>
             {menosUsado ? (
               <>
-                <p><strong className={modoEscuro ? 'text-slate-100' : 'text-slate-800'}>OBS:</strong> O botão menos utilizado nos últimos 7 dias é &quot;{menosUsado.nome}&quot; da categoria {menosUsado.categoria}.</p>
-                <p><strong className={modoEscuro ? 'text-slate-100' : 'text-slate-800'}>Último uso registrado:</strong> {menosUsado.data} às {menosUsado.hora}</p>
-                <p><strong className={modoEscuro ? 'text-slate-100' : 'text-slate-800'}>Sugestão:</strong> Se ele não faz mais sentido na rotina, substitua-o por uma opção de maior relevância para a criança.</p>
+                <p><strong className={altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-100' : 'text-slate-800'}>OBS:</strong> O botão menos utilizado nos últimos 7 dias é &quot;{menosUsado.nome}&quot; da categoria {menosUsado.categoria}.</p>
+                <p><strong className={altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-100' : 'text-slate-800'}>Último uso registrado:</strong> {menosUsado.data} às {menosUsado.hora}</p>
+                <p><strong className={altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-100' : 'text-slate-800'}>Sugestão:</strong> Se ele não faz mais sentido na rotina, substitua-o por uma opção de maior relevância para a criança.</p>
               </>
             ) : (
               <p>Ainda não há acionamentos suficientes nos últimos 7 dias para gerar sugestões. Use o dispositivo e volte aqui.</p>
@@ -299,53 +337,57 @@ export default function Dashboard() {
       {/* MODAL 1: LISTA / GERENCIAR DISPOSITIVOS */}
       {showDevicesModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-[#F3EFF5] border-indigo-100'} w-full max-w-md rounded-3xl p-6 shadow-2xl border relative flex flex-col items-center text-center`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-[#F3EFF5] border-indigo-100'} w-full max-w-md rounded-3xl p-6 shadow-2xl border relative flex flex-col items-center text-center`}>
             
             <button 
-              onClick={() => setShowDevicesModal(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 cursor-pointer"
+              onClick={() => { emitirSomBip(500, 0.05); setShowDevicesModal(false); }}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-2 mb-2 mt-2">
-              <Share2 className="w-6 h-6 text-[#5F7DE3]" />
-              <h3 className="text-xl font-bold text-[#5F7DE3]">
+              <Share2 className={`w-6 h-6 ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}`} />
+              <h3 className={`text-xl font-bold ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}`}>
                 Dispositivos <span className="text-amber-500">Conectados</span>
               </h3>
             </div>
 
-            <p className="text-xs text-slate-400 max-w-xs mb-6 leading-relaxed">
+            <p className="text-[0.9em] text-slate-400 max-w-xs mb-6 leading-relaxed">
               Gerencie os dispositivos físicos que estão pareados com a sua conta.
             </p>
 
             {temDispositivos ? (
               <div className="w-full flex flex-col gap-3 mb-6 max-h-60 overflow-y-auto">
                 {dispositivos.map((d) => (
-                  <div key={d.mac} className={`w-full ${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/80 border-purple-200/80'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
+                  <div key={d.mac} className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/80 border-purple-200/80'} border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}>
                     <div className="flex items-center gap-3 min-w-0">
                       <span className={`w-3 h-3 rounded-full shadow-xs shrink-0 ${d.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
                       <div className="flex flex-col text-left min-w-0">
-                        <span className={`text-sm font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-800'} truncate`}>{d.nome}</span>
-                        <span className="text-[10px] text-slate-400">ID: #{d.codigo}</span>
+                        <span className={`text-[1em] font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-800'} truncate`}>{d.nome}</span>
+                        <span className="text-[0.8em] text-slate-400">ID: #{d.codigo}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => {
+                          emitirSomBip(600, 0.05);
                           setShowDevicesModal(false);
                           setDetalheMac(d.mac);
                           setShowDeviceDetails(true);
                         }}
                         className="p-1.5 text-slate-400 hover:text-[#5F7DE3] transition-colors cursor-pointer"
-                        title="Ver detalhes do card"
+                        title="Ver detalhes"
                       >
                         <Info className="w-4 h-4" />
                       </button>
 
                       <button
-                        onClick={() => setItemParaExcluir({ mac: d.mac, nome: d.nome })}
+                        onClick={() => {
+                          emitirSomBip(400, 0.1);
+                          setItemParaExcluir({ mac: d.mac, nome: d.nome });
+                        }}
                         className="p-1.5 text-rose-500 hover:text-rose-700 transition-colors cursor-pointer"
                         title="Excluir dispositivo"
                       >
@@ -356,26 +398,27 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : (
-              <div className={`w-full ${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/60 border-slate-300'} border border-dashed rounded-2xl p-6 text-center mb-6 flex flex-col items-center gap-2`}>
+              <div className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/60 border-slate-300'} border border-dashed rounded-2xl p-6 text-center mb-6 flex flex-col items-center gap-2`}>
                 <Cpu className="w-8 h-8 text-slate-400" />
-                <span className="text-xs text-slate-400 font-medium">Nenhum dispositivo cadastrado.</span>
+                <span className="text-[0.9em] text-slate-400 font-medium">Nenhum dispositivo cadastrado.</span>
               </div>
             )}
 
             <div className="w-full flex flex-col gap-3">
               <button 
                 onClick={() => {
+                  emitirSomBip(600, 0.05);
                   setShowDevicesModal(false);
                   setShowPareamento(true);
                 }}
-                className="w-full py-3 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white font-semibold text-sm transition-all shadow-md shadow-[#5F7DE3]/20 cursor-pointer"
+                className={`w-full py-3 rounded-2xl ${altoContraste ? 'bg-amber-500 hover:bg-amber-400 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'} font-semibold text-[1em] transition-all shadow-md cursor-pointer`}
               >
                 {temDispositivos ? 'Adicionar Outro Dispositivo' : 'Conectar ESP32'}
               </button>
 
               <button 
-                onClick={() => setShowDevicesModal(false)}
-                className={`w-full py-3 rounded-2xl ${modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-500 hover:bg-slate-600 text-white'} font-semibold text-sm transition-all shadow-xs cursor-pointer`}
+                onClick={() => { emitirSomBip(500, 0.05); setShowDevicesModal(false); }}
+                className={`w-full py-3 rounded-2xl ${altoContraste ? 'bg-zinc-800 text-amber-300 border border-amber-500' : modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-500 hover:bg-slate-600 text-white'} font-semibold text-[1em] transition-all shadow-xs cursor-pointer`}
               >
                 Fechar
               </button>
@@ -388,56 +431,56 @@ export default function Dashboard() {
       {/* MODAL 2: DETALHES DO DISPOSITIVO */}
       {showDeviceDetails && det && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-md rounded-3xl p-6 shadow-2xl border relative flex flex-col gap-6`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-md rounded-3xl p-6 shadow-2xl border relative flex flex-col gap-6`}>
             
             <button 
-              onClick={() => setShowDeviceDetails(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 cursor-pointer"
+              onClick={() => { emitirSomBip(500, 0.05); setShowDeviceDetails(false); }}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 transition-colors p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className={`flex items-center gap-3 border-b ${modoEscuro ? 'border-slate-800' : 'border-slate-100'} pb-4`}>
-              <div className="w-12 h-12 rounded-2xl bg-[#5F7DE3]/10 text-[#5F7DE3] flex items-center justify-center shrink-0">
+            <div className={`flex items-center gap-3 border-b ${altoContraste ? 'border-zinc-800' : modoEscuro ? 'border-slate-800' : 'border-slate-100'} pb-4`}>
+              <div className={`w-12 h-12 rounded-2xl ${altoContraste ? 'bg-zinc-800 text-amber-400 border border-amber-500' : 'bg-[#5F7DE3]/10 text-[#5F7DE3]'} flex items-center justify-center shrink-0`}>
                 <Cpu className="w-6 h-6" />
               </div>
               <div className="flex flex-col text-left">
                 <h3 className="text-lg font-bold">{det.nome}</h3>
-                <span className={`text-xs font-semibold flex items-center gap-1.5 ${det.online ? 'text-emerald-500' : 'text-slate-400'}`}>
+                <span className={`text-[0.9em] font-semibold flex items-center gap-1.5 ${det.online ? 'text-emerald-500' : 'text-slate-400'}`}>
                   <span className={`w-2 h-2 rounded-full ${det.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span> {det.online ? 'Conectado e Ativo' : 'Sem comunicação recente'}
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-left text-xs">
-              <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
+            <div className="grid grid-cols-2 gap-3 text-left text-[0.9em]">
+              <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Endereço IP</span>
-                <span className={`font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} flex items-center gap-1`}>
+                <span className={`font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'} flex items-center gap-1`}>
                   <Wifi className="w-3.5 h-3.5 text-[#5F7DE3]" /> {det.ip ?? '—'}
                 </span>
               </div>
 
-              <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
+              <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Bateria</span>
-                <span className={`font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'} flex items-center gap-1`}>
+                <span className={`font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'} flex items-center gap-1`}>
                   <BatteryCharging className="w-3.5 h-3.5 text-emerald-500" /> {det.bateria_pct != null ? `${det.bateria_pct}%${det.carregando ? ' (Carregando)' : ''}` : '—'}
                 </span>
               </div>
 
-              <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
+              <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Firmware</span>
-                <span className={`font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>{det.firmware ?? '—'}</span>
+                <span className={`font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>{det.firmware ?? '—'}</span>
               </div>
 
-              <div className={`${modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
+              <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl border flex flex-col gap-1`}>
                 <span className="text-slate-400 text-[10px] uppercase font-bold">Endereço MAC</span>
-                <span className={`font-semibold ${modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>{det.mac}</span>
+                <span className={`font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>{det.mac}</span>
               </div>
             </div>
 
             <button 
-              onClick={() => setShowDeviceDetails(false)}
-              className="w-full py-3 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white font-semibold text-sm transition-all shadow-md cursor-pointer"
+              onClick={() => { emitirSomBip(600, 0.05); setShowDeviceDetails(false); }}
+              className={`w-full py-3 rounded-2xl ${altoContraste ? 'bg-amber-500 hover:bg-amber-400 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'} font-semibold text-[1em] transition-all shadow-md cursor-pointer`}
             >
               Entendido
             </button>
@@ -449,31 +492,31 @@ export default function Dashboard() {
       {/* MODAL: PAREAR NOVO DISPOSITIVO */}
       {showPareamento && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleParear} className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-[#F3EFF5] border-indigo-100'} w-full max-w-md rounded-3xl p-6 shadow-2xl border relative flex flex-col gap-4`}>
-            <button type="button" onClick={() => setShowPareamento(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer">
+          <form onSubmit={handleParear} className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-[#F3EFF5] border-indigo-100'} w-full max-w-md rounded-3xl p-6 shadow-2xl border relative flex flex-col gap-4`}>
+            <button type="button" onClick={() => { emitirSomBip(500, 0.05); setShowPareamento(false); }} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-xl font-bold text-[#5F7DE3] text-center">Conectar <span className="text-amber-500">ESP32</span></h3>
-            <p className="text-xs text-slate-400 text-center leading-relaxed">
+            <h3 className={`text-xl font-bold ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'} text-center`}>Conectar <span className="text-amber-500">ESP32</span></h3>
+            <p className="text-[0.9em] text-slate-400 text-center leading-relaxed">
               Informe o endereço MAC do aparelho. Você receberá um código de acesso para gravá-lo no aparelho.
             </p>
             <input
               value={novoMac}
               onChange={(e) => setNovoMac(e.target.value)}
               placeholder="Endereço MAC (24:62:AB:E4:C1:0C)"
-              className={`w-full ${modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-700'} border rounded-2xl px-4 py-3 text-xs focus:outline-none`}
+              className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300 placeholder:text-amber-700' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-700'} border rounded-2xl px-4 py-3 text-[0.9em] focus:outline-none`}
             />
             <input
               value={novoNome}
               onChange={(e) => setNovoNome(e.target.value)}
               placeholder="Nome do dispositivo (opcional)"
               maxLength={80}
-              className={`w-full ${modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-700'} border rounded-2xl px-4 py-3 text-xs focus:outline-none`}
+              className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300 placeholder:text-amber-700' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-700'} border rounded-2xl px-4 py-3 text-[0.9em] focus:outline-none`}
             />
             <button
               type="submit"
               disabled={enviando}
-              className="w-full py-3 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] disabled:opacity-60 text-white font-semibold text-sm transition-all shadow-md cursor-pointer"
+              className={`w-full py-3 rounded-2xl ${altoContraste ? 'bg-amber-500 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3]'} disabled:opacity-60 text-white font-semibold text-[1em] transition-all shadow-md cursor-pointer`}
             >
               {enviando ? 'Conectando...' : 'Conectar'}
             </button>
@@ -484,25 +527,28 @@ export default function Dashboard() {
       {/* MODAL: TOKEN DO DISPOSITIVO */}
       {tokenGerado && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-md rounded-3xl p-6 shadow-2xl border flex flex-col gap-4 text-center items-center`}>
-            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-md rounded-3xl p-6 shadow-2xl border flex flex-col gap-4 text-center items-center`}>
+            <div className={`w-14 h-14 rounded-full ${altoContraste ? 'bg-zinc-800 text-amber-400 border border-amber-500' : 'bg-emerald-100 text-emerald-600'} flex items-center justify-center shadow-xs`}>
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-bold">Dispositivo Conectado</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-[0.9em] text-slate-400 leading-relaxed">
               &quot;{tokenGerado.nome}&quot; ({tokenGerado.mac}) foi pareado. Grave o código abaixo no ESP32. <strong>Ele só é mostrado agora</strong>.
             </p>
-            <code className={`w-full break-all ${modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-200 text-slate-700'} border rounded-2xl p-3 text-[11px] select-all`}>{tokenGerado.token}</code>
+            <code className={`w-full break-all ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-400' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 border-slate-200 text-slate-700'} border rounded-2xl p-3 text-[0.9em] select-all`}>{tokenGerado.token}</code>
             <div className="grid grid-cols-2 gap-3 w-full">
               <button
-                onClick={() => navigator.clipboard?.writeText(tokenGerado.token)}
-                className={`py-3 rounded-2xl ${modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} font-semibold text-xs cursor-pointer`}
+                onClick={() => {
+                  emitirSomBip(700, 0.05);
+                  navigator.clipboard?.writeText(tokenGerado.token);
+                }}
+                className={`py-3 rounded-2xl ${altoContraste ? 'bg-zinc-800 text-amber-300 border border-amber-500' : modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} font-semibold text-[0.9em] cursor-pointer`}
               >
                 Copiar
               </button>
               <button
-                onClick={() => setTokenGerado(null)}
-                className="py-3 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white font-semibold text-xs cursor-pointer"
+                onClick={() => { emitirSomBip(600, 0.05); setTokenGerado(null); }}
+                className={`py-3 rounded-2xl ${altoContraste ? 'bg-amber-500 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3]'} text-white font-semibold text-[0.9em] cursor-pointer`}
               >
                 Já guardei
               </button>
@@ -514,30 +560,30 @@ export default function Dashboard() {
       {/* MODAL 3: CONFIRMAÇÃO DE EXCLUSÃO */}
       {itemParaExcluir && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
             
-            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center ${altoContraste ? 'bg-rose-950 text-rose-500 border border-rose-500' : 'bg-rose-100 text-rose-600'} shadow-xs`}>
               <AlertTriangle className="w-7 h-7" />
             </div>
 
             <div className="flex flex-col gap-1">
               <h3 className="text-lg font-bold">Deseja excluir?</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Tem certeza que deseja remover <strong className={modoEscuro ? 'text-slate-200' : 'text-slate-700'}>&quot;{itemParaExcluir.nome}&quot;</strong>? Esta ação não poderá ser desfeita.
+              <p className="text-[0.9em] text-slate-400 leading-relaxed">
+                Tem certeza que deseja remover <strong className={altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}>&quot;{itemParaExcluir.nome}&quot;</strong>? Esta ação não poderá ser desfeita.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 w-full mt-2">
               <button 
-                onClick={() => setItemParaExcluir(null)}
-                className={`py-3 rounded-2xl ${modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} font-semibold text-xs transition-all cursor-pointer`}
+                onClick={() => { emitirSomBip(500, 0.05); setItemParaExcluir(null); }}
+                className={`py-3 rounded-2xl ${altoContraste ? 'bg-zinc-800 text-amber-300 border border-amber-500' : modoEscuro ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'} font-semibold text-[0.9em] transition-all cursor-pointer`}
               >
                 Cancelar
               </button>
 
               <button 
                 onClick={handleConfirmarExclusao}
-                className="py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-all shadow-md shadow-rose-600/20 cursor-pointer"
+                className="py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[0.9em] transition-all shadow-md shadow-rose-600/20 cursor-pointer"
               >
                 Sim, Excluir
               </button>
@@ -550,34 +596,34 @@ export default function Dashboard() {
       {/* MODAL 4: FEEDBACKS DO SISTEMA */}
       {feedback.tipo && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className={`${modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
+          <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'} w-full max-w-sm rounded-3xl p-6 shadow-2xl border text-center flex flex-col items-center gap-4`}>
             
             {feedback.tipo === 'sucesso' && (
-              <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
+              <div className={`w-14 h-14 rounded-full ${altoContraste ? 'bg-zinc-800 text-emerald-400 border border-emerald-500' : 'bg-emerald-100 text-emerald-600'} flex items-center justify-center shadow-xs`}>
                 <CheckCircle2 className="w-8 h-8" />
               </div>
             )}
 
             {feedback.tipo === 'erro' && (
-              <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+              <div className={`w-14 h-14 rounded-full ${altoContraste ? 'bg-zinc-800 text-rose-500 border border-rose-500' : 'bg-rose-100 text-rose-600'} flex items-center justify-center shadow-xs`}>
                 <XCircle className="w-8 h-8" />
               </div>
             )}
 
             {feedback.tipo === 'atencao' && (
-              <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shadow-xs">
+              <div className={`w-14 h-14 rounded-full ${altoContraste ? 'bg-zinc-800 text-amber-400 border border-amber-500' : 'bg-amber-100 text-amber-600'} flex items-center justify-center shadow-xs`}>
                 <AlertTriangle className="w-8 h-8" />
               </div>
             )}
 
             <div className="flex flex-col gap-1">
               <h3 className="text-lg font-bold">{feedback.titulo}</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">{feedback.mensagem}</p>
+              <p className="text-[0.9em] text-slate-400 leading-relaxed">{feedback.mensagem}</p>
             </div>
 
             <button 
-              onClick={() => setFeedback({ tipo: null, titulo: '', mensagem: '' })}
-              className="w-full py-3 rounded-2xl bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white font-semibold text-xs transition-all shadow-md mt-2 cursor-pointer"
+              onClick={() => { emitirSomBip(600, 0.05); setFeedback({ tipo: null, titulo: '', mensagem: '' }); }}
+              className={`w-full py-3 rounded-2xl ${altoContraste ? 'bg-amber-500 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3]'} text-white font-semibold text-[0.9em] transition-all shadow-md mt-2 cursor-pointer`}
             >
               Ok, Entendido
             </button>

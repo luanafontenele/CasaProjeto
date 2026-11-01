@@ -3,7 +3,6 @@
 import { useEffect } from 'react';
 import { useUsuario } from '@/lib/UsuarioContext';
 
-/** Aplica a preferência "Tamanho da fonte" (8–20) em toda a área logada. 10 = tamanho padrão. */
 export default function AplicarPreferencias() {
   const { perfil } = useUsuario();
   const tamanho = perfil?.tamanho_fonte;
