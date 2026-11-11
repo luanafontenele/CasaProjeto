@@ -10,3 +10,8 @@ backend/__pycache__/
 # Ambientes / Chaves
 .env
 .env.local
+*credentials*.json
+uploads/
+**/__pycache__/
+*.pyc
+ProjetoCasa/
