@@ -21,3 +21,9 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+/* Oculta o ícone nativo de visualização/limpeza de senha do navegador (Edge/IE/Windows) */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+}

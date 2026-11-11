@@ -121,7 +121,7 @@ export default function Login() {
           
           <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
             <Image 
-              src="/logo.png" 
+              src="/logosemtitulo.svg" 
               alt="Logo C.A.S.A" 
               width={96} 
               height={96} 
@@ -167,7 +167,7 @@ export default function Login() {
                   placeholder="••••••••••••"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
-                  className="w-full bg-white border border-purple-100 rounded-2xl pl-11 pr-24 py-3 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#5F7DE3] shadow-xs transition-all"
+                  className="w-full bg-white border border-purple-100 rounded-2xl pl-11 pr-24 py-3 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#5F7DE3] shadow-xs transition-all [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
                 />
                 <button 
                   type="button"

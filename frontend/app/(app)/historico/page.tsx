@@ -18,6 +18,7 @@ type ItemHistorico = {
   ultimo_acionamento: string;
   hora: string;
   data: string;
+  tempo_aproximado?: boolean;
 };
 
 export default function Historico() {
@@ -230,7 +231,12 @@ export default function Historico() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-400 text-[0.85em]">
-                        {item.data} às {item.hora}
+                        <div>{item.data} às {item.hora}</div>
+                        {item.tempo_aproximado && (
+                          <span className="inline-block mt-0.5 text-[10px] text-amber-600 dark:text-amber-400 font-semibold" title="Horário aproximado (ESP32 sem relógio de tempo real)">
+                            ⚠️ Horário aproximado
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <button

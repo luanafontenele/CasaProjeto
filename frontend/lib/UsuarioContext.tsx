@@ -33,18 +33,28 @@ export function UsuarioProvider({ children, aoFalhar }: { children: React.ReactN
 
   const recarregar = useCallback(async () => {
     try {
+      console.log('[DEBUG UsuarioContext] Recarregando perfil (/me)...');
       const { data } = await api.get<Perfil>('/me');
+      console.log('[DEBUG UsuarioContext] Perfil recarregado com sucesso:', data);
       setPerfil(data);
-    } catch {
+    } catch (err) {
+      console.error('[DEBUG UsuarioContext] Falha ao recarregar perfil (/me):', err);
       aoFalhar();
     }
   }, [aoFalhar]);
 
   useEffect(() => {
     let ativo = true;
+    console.log('[DEBUG UsuarioContext] Buscando perfil do usuário em api.get(/me)...');
     api.get<Perfil>('/me').then(
-      (r) => ativo && setPerfil(r.data),
-      () => ativo && aoFalhar(),
+      (r) => {
+        console.log('[DEBUG UsuarioContext] Perfil carregado com sucesso:', r.data);
+        if (ativo) setPerfil(r.data);
+      },
+      (err) => {
+        console.error('[DEBUG UsuarioContext] Erro ao buscar /me na API (acionando aoFalhar / redirecionar ao login):', err);
+        if (ativo) aoFalhar();
+      },
     );
     return () => {
       ativo = false;

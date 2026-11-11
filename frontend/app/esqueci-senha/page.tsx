@@ -100,7 +100,7 @@ export default function EsqueciSenha() {
           
           <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
             <Image 
-              src="/logo.png" 
+              src="/logosemtitulo.svg" 
               alt="Logo C.A.S.A" 
               width={96} 
               height={96} 

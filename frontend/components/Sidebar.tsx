@@ -1,18 +1,23 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BarChart2, ChevronDown, Grid, History, Home, LogOut, Settings, User } from 'lucide-react';
 import { sair } from '@/lib/auth';
 import { useUsuario } from '@/lib/UsuarioContext';
 
 // Adicionei 'perfil' na lista se você for criar a página depois!
-export type ItemMenu = 'dashboard' | 'categoria' | 'desempenho' | 'historico' | 'perfil' | 'configuracoes';
+export type ItemMenu = 'dashboard' | 'categoria' | 'dispositivo' | 'desempenho' | 'historico' | 'perfil' | 'configuracoes';
+
+interface SidebarProps {
+  ativo: ItemMenu;
+  temAlteracoesPendentes?: boolean;
+  aoTentarSair?: (prosseguir: () => void) => void;
+}
 
 const ITENS = [
   { chave: 'dashboard', href: '/dashboard', rotulo: 'Início', Icone: Home },
-  { chave: 'categoria', href: '/categoria', rotulo: 'Categorias', Icone: Grid },
+  { chave: 'dispositivo', href: '/dispositivo', rotulo: 'Dispositivo', Icone: Grid },
   { chave: 'desempenho', href: '/desempenho', rotulo: 'Desempenho', Icone: BarChart2 },
   { chave: 'historico', href: '/historico', rotulo: 'Histórico', Icone: History },
   // Adicione a linha abaixo quando for criar a página de perfil
@@ -20,7 +25,7 @@ const ITENS = [
   { chave: 'configuracoes', href: '/configuracoes', rotulo: 'Configurações', Icone: Settings },
 ] as const;
 
-export default function Sidebar({ ativo }: { ativo: ItemMenu }) {
+export default function Sidebar({ ativo, temAlteracoesPendentes = false, aoTentarSair }: SidebarProps) {
   const router = useRouter();
   
   // PEGANDO TUDO DIRETO DO CONTEXTO GLOBAL
@@ -51,14 +56,28 @@ export default function Sidebar({ ativo }: { ativo: ItemMenu }) {
     }
   };
 
-  const desconectar = async () => {
-    emitirSomBip(400, 0.15); // Som grave pra saída
-    await sair();
-    router.replace('/login');
+  const verificarSair = (acao: () => void) => {
+    if (temAlteracoesPendentes && aoTentarSair) {
+      aoTentarSair(acao);
+    } else {
+      acao();
+    }
   };
 
-  const handleLinkClick = () => {
-    emitirSomBip(600, 0.05); // Som agudo de clique
+  const desconectar = async () => {
+    verificarSair(async () => {
+      emitirSomBip(400, 0.15); // Som grave pra saída
+      await sair();
+      router.replace('/login');
+    });
+  };
+
+  const navegarPara = (href: string) => {
+    if (href === '/dispositivo' && ativo === 'dispositivo') return;
+    verificarSair(() => {
+      emitirSomBip(600, 0.05); // Som agudo de clique
+      router.push(href);
+    });
   };
 
   // ESTILOS DINÂMICOS DA ACESSIBILIDADE
@@ -97,21 +116,21 @@ export default function Sidebar({ ativo }: { ativo: ItemMenu }) {
         <div className="flex justify-center w-full px-2">
           <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
             {/* Se estiver no alto contraste, deixei a imagem, mas você pode querer usar um logo branco/amarelo no futuro */}
-            <Image src="/logo.png" alt="Logo C.A.S.A" width={96} height={96} className="object-contain" priority />
+            <Image src="/logosemtitulo.svg" alt="Logo C.A.S.A" width={96} height={96} className="object-contain" priority />
           </div>
         </div>
 
         <nav className="flex flex-col gap-2">
           {ITENS.map(({ chave, href, rotulo, Icone }) => (
-            <Link
+            <button
               key={chave}
-              href={href}
-              onClick={handleLinkClick}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-medium text-[1.1em] transition-all cursor-pointer ${getLinkClasses(chave)}`}
+              type="button"
+              onClick={() => navegarPara(href)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl font-medium text-[1.1em] transition-all cursor-pointer w-full text-left ${getLinkClasses(chave)}`}
             >
-              <Icone className="w-5 h-5" />
+              <Icone className="w-5 h-5 shrink-0" />
               {rotulo}
-            </Link>
+            </button>
           ))}
         </nav>
       </div>
@@ -119,10 +138,10 @@ export default function Sidebar({ ativo }: { ativo: ItemMenu }) {
       <div className={`flex flex-col gap-3 pt-6 border-t ${altoContraste ? 'border-amber-500/50' : modoEscuro ? 'border-slate-800' : 'border-slate-100'}`}>
         
         {/* CARD DO PERFIL (CLICÁVEL PARA IR AO PERFIL) */}
-        <Link
-          href="/perfil"
-          onClick={handleLinkClick}
-          className={`flex items-center justify-between p-2 rounded-2xl border transition-all hover:opacity-90 cursor-pointer ${
+        <button
+          type="button"
+          onClick={() => navegarPara('/perfil')}
+          className={`flex items-center justify-between p-2 rounded-2xl border transition-all hover:opacity-90 cursor-pointer w-full text-left ${
             altoContraste 
               ? 'bg-zinc-900 border-amber-500/50 hover:bg-zinc-800' 
               : modoEscuro 
@@ -146,7 +165,7 @@ export default function Sidebar({ ativo }: { ativo: ItemMenu }) {
             </div>
           </div>
           <ChevronDown className={`w-4 h-4 shrink-0 -rotate-90 ${altoContraste ? 'text-amber-500' : 'text-slate-400'}`} />
-        </Link>
+        </button>
 
         {/* BOTÃO DESCONECTAR */}
         <button

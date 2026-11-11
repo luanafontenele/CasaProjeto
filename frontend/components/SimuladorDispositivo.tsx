@@ -1,0 +1,435 @@
+'use client';
+
+import { useState } from 'react';
+import { Plus, Volume2, Folder, Sparkles, Check, Image as ImageIcon, Pencil } from 'lucide-react';
+
+export type BotaoSimulador = {
+  id: string;
+  rotulo: string;
+  significado?: string | null;
+  ordem?: number;
+  imagem_id?: string | null;
+  imagem?: string | null;
+  audio_id?: string | null;
+  audio?: string | null;
+  tipo_audio?: 'masculino' | 'feminino';
+};
+
+export type CategoriaSimulador = {
+  id: string;
+  nome: string;
+  slug?: string;
+  cor?: string | null;
+  ordem?: number;
+  emoji?: string;
+  imagem_id?: string | null;
+  imagem?: string | null;
+  tipo_audio?: 'masculino' | 'feminino';
+  botoes?: BotaoSimulador[];
+};
+
+interface SimuladorDispositivoProps {
+  categorias: CategoriaSimulador[];
+  categoriaAtivaId: string | null;
+  onSelecionarCategoria: (id: string) => void;
+  onAdicionarCategoria: () => void;
+  onEditarCategoria?: (categoria: CategoriaSimulador) => void;
+  onAdicionarAcao: (categoriaId: string) => void;
+  onEditarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
+  onClicarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
+  modoEscuro?: boolean;
+  altoContraste?: boolean;
+  emitirSomBip?: (freq?: number, dur?: number) => void;
+}
+
+export default function SimuladorDispositivo({
+  categorias = [],
+  categoriaAtivaId,
+  onSelecionarCategoria,
+  onAdicionarCategoria,
+  onEditarCategoria,
+  onAdicionarAcao,
+  onEditarAcao,
+  onClicarAcao,
+  modoEscuro = false,
+  altoContraste = false,
+  emitirSomBip,
+}: SimuladorDispositivoProps) {
+  const [botaoPressionadoIndex, setBotaoPressionadoIndex] = useState<number | null>(null);
+  const [modoInteracao, setModoInteracao] = useState<'acionar' | 'editar'>('acionar');
+
+  const listaCategorias = Array.isArray(categorias) ? categorias : [];
+
+  // Categoria atualmente exibida no painel de botões
+  const categoriaAtiva =
+    listaCategorias.find((c) => c.id === categoriaAtivaId) ?? (listaCategorias.length > 0 ? listaCategorias[0] : null);
+
+  const tocarSomBotao = (b: BotaoSimulador, index: number) => {
+    setBotaoPressionadoIndex(index);
+    setTimeout(() => setBotaoPressionadoIndex(null), 300);
+
+    if (b.audio) {
+      try {
+        const audioEl = new Audio(b.audio);
+        audioEl.play().catch(() => {
+          emitirSomBip?.(520, 0.1);
+        });
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    // Efeito sonoro tátil
+    emitirSomBip?.(600, 0.08);
+  };
+
+  // Coordenadas exatas em % mapeadas do layout físico da carcaça casa.svg (viewBox 0 0 2752 1536)
+  const TOP_SLOTS = [
+    { x: 28.63, y: 17.97, w: 11.01, h: 20.18 }, // Tela 1 (Categoria 1)
+    { x: 44.95, y: 17.97, w: 11.01, h: 20.18 }, // Tela 2 (Categoria 2)
+    { x: 61.16, y: 17.97, w: 11.01, h: 20.18 }, // Tela 3 (Categoria 3)
+  ];
+
+  const BOTTOM_SLOTS = [
+    { x: 13.74, y: 64.06, w: 10.21, h: 18.10 }, // Botão 1
+    { x: 29.51, y: 64.06, w: 10.25, h: 18.10 }, // Botão 2
+    { x: 45.28, y: 64.06, w: 10.25, h: 18.10 }, // Botão 3
+    { x: 61.05, y: 64.06, w: 10.21, h: 18.10 }, // Botão 4
+    { x: 76.82, y: 64.06, w: 10.21, h: 18.10 }, // Botão 5
+  ];
+
+  return (
+    <div
+      className={`w-full rounded-3xl p-4 sm:p-6 border transition-all shadow-md ${
+        altoContraste
+          ? 'bg-black border-amber-400'
+          : modoEscuro
+          ? 'bg-slate-900/90 border-slate-800'
+          : 'bg-white/90 border-slate-200'
+      }`}
+    >
+      {/* HEADER DO SIMULADOR */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+              altoContraste
+                ? 'bg-amber-400 text-black'
+                : 'bg-blue-600 text-white shadow-sm'
+            }`}
+          >
+            ESP
+          </div>
+          <div>
+            <h2 className="text-sm sm:text-base font-bold tracking-tight">
+              Simulador do Aparelho Físico C.A.S.A.
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Visualização fiel das telas TFT ST7789 (240x240) e botões de acionamento.
+            </p>
+          </div>
+        </div>
+
+        {/* CONTROLES DO SIMULADOR (MODO E CATEGORIA) */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* SELETOR DE MODO DO SIMULADOR: ACIONAR vs EDITAR */}
+          <div className="flex items-center rounded-xl bg-slate-200/80 dark:bg-slate-800 p-0.5 border border-slate-300 dark:border-slate-700 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                emitirSomBip?.(600, 0.04);
+                setModoInteracao('acionar');
+              }}
+              title="Clique para testar o som e o acionamento dos botões"
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                modoInteracao === 'acionar'
+                  ? altoContraste
+                    ? 'bg-amber-400 text-black font-bold'
+                    : 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Ouvir Sons</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                emitirSomBip?.(600, 0.04);
+                setModoInteracao('editar');
+              }}
+              title="Clique para editar categorias e ações ao clicar nos slots"
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                modoInteracao === 'editar'
+                  ? altoContraste
+                    ? 'bg-amber-400 text-black font-bold'
+                    : 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Modo Editar</span>
+            </button>
+          </div>
+
+          {/* CONTROLE RÁPIDO DE CATEGORIA ATIVA */}
+          {listaCategorias.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">
+                Ativa:
+              </span>
+              {listaCategorias.slice(0, 3).map((cat) => {
+                const isAtiva = categoriaAtiva?.id === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => {
+                      emitirSomBip?.(650, 0.05);
+                      onSelecionarCategoria(cat.id);
+                    }}
+                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isAtiva
+                        ? altoContraste
+                          ? 'bg-amber-400 text-black shadow-xs font-bold'
+                          : 'bg-blue-600 text-white shadow-xs'
+                        : altoContraste
+                        ? 'bg-zinc-800 text-amber-300 hover:bg-zinc-700'
+                        : modoEscuro
+                        ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{cat.nome}</span>
+                    {isAtiva && <Check className="w-3 h-3" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ÁREA DO DISPOSITIVO SVG INTERATIVO */}
+      <div className="relative w-full max-w-4xl mx-auto aspect-[2752/1536] select-none overflow-hidden rounded-2xl bg-slate-100/50 dark:bg-slate-950/40 shadow-inner flex items-center justify-center">
+        {/* CARCAÇA FÍSICA DO DISPOSITIVO (casa.svg) */}
+        <img
+          src="/casa.svg"
+          alt="Carcaça do Dispositivo C.A.S.A."
+          className="w-full h-full object-contain pointer-events-none"
+        />
+
+        {/* ───────────── TELAS SUPERIORES (3 CATEGORIAS) ───────────── */}
+        {TOP_SLOTS.map((slot, index) => {
+          const cat = listaCategorias[index];
+          const isAtiva = cat && categoriaAtiva?.id === cat.id;
+
+          return (
+            <div
+              key={`top-slot-${index}`}
+              style={{
+                left: `${slot.x}%`,
+                top: `${slot.y}%`,
+                width: `${slot.w}%`,
+                height: `${slot.h}%`,
+              }}
+              className="absolute z-10 p-[1%]"
+            >
+              {cat ? (
+                <div
+                  onClick={() => {
+                    if (modoInteracao === 'editar' && onEditarCategoria) {
+                      emitirSomBip?.(600, 0.05);
+                      onEditarCategoria(cat);
+                    } else {
+                      emitirSomBip?.(650, 0.06);
+                      onSelecionarCategoria(cat.id);
+                    }
+                  }}
+                  title={cat.nome}
+                  className={`w-full h-full rounded-lg sm:rounded-xl overflow-hidden relative cursor-pointer transition-all shadow-inner group ${
+                    modoInteracao === 'editar'
+                      ? 'ring-2 ring-amber-400 shadow-md hover:scale-[1.02]'
+                      : isAtiva
+                      ? 'ring-2 sm:ring-4 ring-blue-500 shadow-lg scale-[1.02]'
+                      : 'hover:opacity-100 opacity-90 ring-1 ring-slate-700/60'
+                  }`}
+                >
+                  {/* FOTO DA CATEGORIA COBRINDO TODO O ESPAÇO */}
+                  {cat.imagem ? (
+                    <img
+                      src={cat.imagem}
+                      alt={cat.nome}
+                      className="w-full h-full object-cover absolute inset-0"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+                      <Folder className="w-6 h-6 sm:w-10 sm:h-10 text-blue-400" />
+                    </div>
+                  )}
+
+                  {/* APENAS O LÁPIS DE EDIÇÃO */}
+                  {onEditarCategoria && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        emitirSomBip?.(600, 0.05);
+                        onEditarCategoria(cat);
+                      }}
+                      title={`Editar categoria ${cat.nome}`}
+                      className="absolute top-1 right-1 z-20 p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                    >
+                      <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitirSomBip?.(600, 0.05);
+                    onAdicionarCategoria();
+                  }}
+                  title="Slot vazio. Clique para adicionar uma categoria"
+                  className="w-full h-full rounded-lg sm:rounded-xl border border-dashed border-slate-500/70 bg-slate-900/40 hover:bg-slate-900/80 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-white transition-all cursor-pointer p-1"
+                >
+                  <Plus className="w-4 h-4 sm:w-6 sm:h-6 text-slate-400" />
+                  <span className="text-[7px] sm:text-[9px] font-semibold text-center">
+                    + Categoria {index + 1}
+                  </span>
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {/* ───────────── ÁREA CENTRAL / STATUS DO ESP32 ───────────── */}
+        <div
+          style={{
+            left: '43.90%',
+            top: '45.57%',
+            width: '13.01%',
+            height: '10.55%',
+          }}
+          className="absolute z-10 flex flex-col items-center justify-center p-1 rounded-md bg-slate-950/80 border border-slate-800 text-center pointer-events-none"
+        >
+          <span className="text-[6px] sm:text-[8px] font-mono tracking-widest text-blue-400 uppercase font-bold">
+            C.A.S.A. ESP32
+          </span>
+          <span className="text-[8px] sm:text-[11px] font-bold text-slate-100 truncate max-w-full px-1">
+            {categoriaAtiva ? categoriaAtiva.nome : 'Sem Categoria'}
+          </span>
+          <span className="text-[6px] sm:text-[8px] text-slate-400 font-medium">
+            {categoriaAtiva ? `${categoriaAtiva.botoes?.length || 0}/5 Ações` : '0/5 Ações'}
+          </span>
+        </div>
+
+        {/* ───────────── BOTÕES INFERIORES (5 AÇÕES) ───────────── */}
+        {BOTTOM_SLOTS.map((slot, index) => {
+          const botao = categoriaAtiva?.botoes?.[index];
+          const isPressionado = botaoPressionadoIndex === index;
+
+          return (
+            <div
+              key={`bottom-slot-${index}`}
+              style={{
+                left: `${slot.x}%`,
+                top: `${slot.y}%`,
+                width: `${slot.w}%`,
+                height: `${slot.h}%`,
+              }}
+              className="absolute z-10 p-[0.8%]"
+            >
+              {botao ? (
+                <div
+                  onClick={() => {
+                    if (modoInteracao === 'editar' && onEditarAcao && categoriaAtiva) {
+                      emitirSomBip?.(600, 0.05);
+                      onEditarAcao(botao, categoriaAtiva.id);
+                    } else {
+                      tocarSomBotao(botao, index);
+                      if (categoriaAtiva) {
+                        onClicarAcao?.(botao, categoriaAtiva.id);
+                      }
+                    }
+                  }}
+                  title={botao.rotulo}
+                  className={`w-full h-full rounded-xl sm:rounded-2xl overflow-hidden relative cursor-pointer transition-transform duration-100 shadow-md group ${
+                    modoInteracao === 'editar'
+                      ? 'border-amber-400 ring-2 ring-amber-400/80 hover:scale-[1.03]'
+                      : isPressionado
+                      ? 'scale-95 brightness-125 ring-2 ring-blue-400'
+                      : 'hover:scale-[1.02] ring-1 ring-slate-700/60'
+                  }`}
+                >
+                  {/* FOTO DA AÇÃO COBRINDO TODO O ESPAÇO */}
+                  {botao.imagem ? (
+                    <img
+                      src={botao.imagem}
+                      alt={botao.rotulo}
+                      className="w-full h-full object-cover absolute inset-0"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+                      <ImageIcon className="w-6 h-6 sm:w-10 sm:h-10 text-slate-400" />
+                    </div>
+                  )}
+
+                  {/* APENAS O LÁPIS DE EDIÇÃO */}
+                  {onEditarAcao && categoriaAtiva && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        emitirSomBip?.(600, 0.05);
+                        onEditarAcao(botao, categoriaAtiva.id);
+                      }}
+                      title={`Editar ação: ${botao.rotulo}`}
+                      className="absolute top-1 right-1 z-20 p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                    >
+                      <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    emitirSomBip?.(600, 0.05);
+                    if (categoriaAtiva) {
+                      onAdicionarAcao(categoriaAtiva.id);
+                    } else {
+                      onAdicionarCategoria();
+                    }
+                  }}
+                  title={
+                    categoriaAtiva
+                      ? `Slot ${index + 1} vazio. Clique para adicionar ação nesta categoria.`
+                      : 'Cadastre uma categoria primeiro.'
+                  }
+                  className="w-full h-full rounded-xl sm:rounded-2xl border border-dashed border-slate-500/60 bg-slate-900/30 hover:bg-slate-900/70 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-white transition-all cursor-pointer p-1"
+                >
+                  <Plus className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                  <span className="text-[7px] sm:text-[9px] font-semibold text-center">
+                    + Ação {index + 1}
+                  </span>
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* LEGENDA INFORMATIVA INFERIOR */}
+      <div className="flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 gap-2">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block animate-pulse"></span>
+          Clique em qualquer tela ou botão no simulador para selecionar, testar o som ou editar.
+        </span>
+        <span className="font-medium text-slate-500 dark:text-slate-400">
+          Hardware: ESP32-WROOM-32 + 3× ST7789 240x240 + I2S Audio
+        </span>
+      </div>
+    </div>
+  );
+}

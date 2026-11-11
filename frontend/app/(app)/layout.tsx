@@ -7,34 +7,55 @@ import { auth } from '@/lib/firebase';
 import { UsuarioProvider } from '@/lib/UsuarioContext';
 import AplicarPreferencias from '@/components/AplicarPreferencias';
 
-// Só para testes com contas criadas à mão no console (sem e-mail confirmado):
-// NEXT_PUBLIC_REQUIRE_EMAIL_VERIFIED=false no .env.local (e REQUIRE_EMAIL_VERIFIED=false no backend)
 const EXIGIR_EMAIL = process.env.NEXT_PUBLIC_REQUIRE_EMAIL_VERIFIED !== 'false';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [pronto, setPronto] = useState(false);
 
-  const voltarAoLogin = useCallback(async () => {
+  const voltarAoLogin = useCallback((motivo?: string) => {
+    console.warn(`[DEBUG AppLayout] Redirecionando para /login. Motivo: ${motivo ?? 'Não autenticado'}`);
     setPronto(false);
-    await signOut(auth).catch(() => {});
-    router.replace('/login');
+    if (auth.currentUser) {
+      signOut(auth).catch(() => {});
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    } else {
+      router.replace('/login');
+    }
   }, [router]);
 
   useEffect(() => {
-    // Dispara na carga da página e a cada login/logout
+    console.log('[DEBUG AppLayout] Iniciando verificação de autenticação...');
     return onAuthStateChanged(auth, (user) => {
+      console.log('[DEBUG AppLayout] Estado de autenticação alterado:', {
+        autenticado: !!user,
+        email: user?.email,
+        emailVerificado: user?.emailVerified,
+        exigirEmailVerificado: EXIGIR_EMAIL,
+      });
       if (user && (user.emailVerified || !EXIGIR_EMAIL)) {
+        console.log('[DEBUG AppLayout] Acesso liberado para rotas internas.');
         setPronto(true);
       } else {
-        voltarAoLogin();
+        const motivo = !user
+          ? 'Nenhum usuário logado no Firebase'
+          : `E-mail não verificado (${user.email}) e EXIGIR_EMAIL=${EXIGIR_EMAIL}`;
+        voltarAoLogin(motivo);
       }
     });
   }, [voltarAoLogin]);
 
   if (!pronto) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Carregando...</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300">
+        <div className="w-7 h-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-xs font-medium">Verificando acesso...</span>
+      </div>
+    );
   }
+
   return (
     <UsuarioProvider aoFalhar={voltarAoLogin}>
       <AplicarPreferencias />

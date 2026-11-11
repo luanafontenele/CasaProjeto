@@ -83,7 +83,7 @@ export default function BarraTopo({ escuro = false }: { escuro?: boolean }) {
     <div
       className={`relative flex justify-between items-center ${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-100 text-slate-800'} p-3.5 rounded-2xl border shadow-xs`}
     >
-      <span className={`text-[0.9em] font-semibold ${altoContraste ? 'text-amber-400' : 'text-slate-400'}`}>Painel do responsável</span>
+      <span className={`text-lg md:text-xl font-bold tracking-tight ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-200' : 'text-slate-700'}`}>Painel do responsável</span>
 
       <button
         onClick={alternar}
@@ -97,10 +97,14 @@ export default function BarraTopo({ escuro = false }: { escuro?: boolean }) {
       </button>
 
       {aberto && (
-        <div className={`absolute top-full right-0 mt-2 w-80 ${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-[#F3EFF5] border-indigo-100'} rounded-3xl p-6 shadow-2xl border z-50`}>
+        <div className={`absolute top-full right-0 mt-2 w-80 ${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-50 border-slate-200'} rounded-3xl p-6 shadow-2xl border z-50`}>
           <div className="flex justify-between items-center mb-6">
-            <h4 className={`text-lg font-bold ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}`}>Notificações</h4>
-            <button onClick={() => { emitirSomBip(500, 0.05); setAberto(false); }} className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
+            <h4 className={`text-lg font-bold ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-white' : 'text-[#5F7DE3]'}`}>Notificações</h4>
+            <button
+              onClick={() => { emitirSomBip(500, 0.05); setAberto(false); }}
+              className={`p-1 rounded-lg cursor-pointer transition-colors ${altoContraste ? 'text-amber-400 hover:text-amber-300' : modoEscuro ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-800'}`}
+              aria-label="Fechar"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -111,37 +115,55 @@ export default function BarraTopo({ escuro = false }: { escuro?: boolean }) {
                 <div key={n.id} className={`${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white text-slate-800'} p-3.5 rounded-2xl shadow-xs flex items-center justify-between gap-3 border`}>
                   <div className="flex items-center gap-3 min-w-0">
                     {n.tipo === 'bateria_baixa' ? (
-                      <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 shrink-0 flex items-center justify-center font-bold text-xs">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 shrink-0 flex items-center justify-center font-bold text-xs">
                         !
                       </div>
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 shrink-0 flex items-center justify-center text-white text-xs font-bold">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 shrink-0 flex items-center justify-center text-white text-xs font-bold">
                         ESP
                       </div>
                     )}
                     <div className="flex flex-col min-w-0 text-left">
                       <span className={`text-[0.9em] font-semibold ${altoContraste ? 'text-amber-300' : 'text-slate-800 dark:text-slate-200'}`}>{n.titulo}</span>
-                      <span className="text-[0.8em] text-slate-400 truncate">{n.mensagem}</span>
+                      <span className={`text-[0.8em] truncate ${altoContraste ? 'text-amber-400/80' : modoEscuro ? 'text-slate-400' : 'text-slate-500'}`}>{n.mensagem}</span>
                     </div>
                   </div>
-                  <span className="text-[0.8em] text-purple-500 font-medium shrink-0">{tempoRelativo(n.criada_em)}</span>
+                  <span className={`text-[0.8em] font-semibold shrink-0 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-blue-400' : 'text-blue-600'}`}>{tempoRelativo(n.criada_em)}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800 border-slate-700' : 'bg-white/60 border-slate-200/60'} border p-6 rounded-2xl text-center flex flex-col items-center gap-2`}>
-              <Bell className="w-8 h-8 text-slate-300" />
-              <span className="text-[0.9em] text-slate-400 font-medium">Nenhuma notificação por enquanto.</span>
+            <div className={`${altoContraste ? 'bg-zinc-900 border-amber-500' : modoEscuro ? 'bg-slate-800/90 border-slate-700' : 'bg-white border-slate-200'} border p-6 rounded-2xl text-center flex flex-col items-center gap-3 shadow-xs`}>
+              <Bell className={`w-8 h-8 ${altoContraste ? 'text-amber-400' : modoEscuro ? 'text-slate-300' : 'text-slate-600'}`} />
+              <span className={`text-sm font-semibold ${altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-100' : 'text-slate-700'}`}>
+                Nenhuma notificação por enquanto.
+              </span>
             </div>
           )}
 
-          <div className="flex justify-center gap-6 mt-6">
+          <div className="flex justify-center items-center gap-4 mt-6">
             {itens.length > 0 && (
-              <button onClick={limpar} className="text-[0.9em] text-rose-400 hover:text-rose-600 cursor-pointer font-semibold">
+              <button
+                onClick={limpar}
+                className={`text-sm font-semibold cursor-pointer px-4 py-2 rounded-xl transition-colors ${
+                  altoContraste
+                    ? 'text-rose-400 hover:text-rose-300'
+                    : 'text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400'
+                }`}
+              >
                 Limpar
               </button>
             )}
-            <button onClick={() => { emitirSomBip(500, 0.05); setAberto(false); }} className="text-[0.9em] text-slate-400 hover:text-slate-600 cursor-pointer font-semibold">
+            <button
+              onClick={() => { emitirSomBip(500, 0.05); setAberto(false); }}
+              className={`text-sm font-bold cursor-pointer px-5 py-2 rounded-xl transition-all ${
+                altoContraste
+                  ? 'bg-zinc-900 text-amber-400 border border-amber-500 hover:bg-zinc-800'
+                  : modoEscuro
+                  ? 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700'
+                  : 'bg-white text-slate-800 hover:bg-slate-100 border border-slate-300 shadow-xs'
+              }`}
+            >
               Fechar
             </button>
           </div>
