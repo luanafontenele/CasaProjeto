@@ -125,12 +125,24 @@ async function urlParaArquivo(url: string, nomeArquivo: string): Promise<File> {
   return new File([blob], nomeArquivo, { type: tipoMime });
 }
 
+function normalizarMidiaUrl(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  if (url.startsWith('/midias/')) {
+    return `${apiBase}${url}`;
+  }
+  return url;
+}
+
 async function processarImagemParaESP32(imgSrc: string | File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = document.createElement('img');
     img.crossOrigin = 'anonymous';
     const isBlob = imgSrc instanceof Blob;
-    const objectUrl = isBlob ? URL.createObjectURL(imgSrc) : imgSrc;
+    const objectUrl = isBlob ? URL.createObjectURL(imgSrc) : normalizarMidiaUrl(typeof imgSrc === 'string' ? imgSrc : '');
 
     img.onload = () => {
       try {
@@ -181,7 +193,9 @@ async function processarAudioParaESP32(audioSrc: string | File | Blob): Promise<
   if (audioSrc instanceof Blob) {
     blob = audioSrc;
   } else {
-    const res = await fetch(audioSrc);
+    const url = normalizarMidiaUrl(String(audioSrc));
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Falha ao obter áudio (${url}): status ${res.status}`);
     blob = await res.blob();
   }
 
@@ -498,7 +512,67 @@ export default function Dispositivo() {
         }
       }
 
-      // Sucesso na persistência! A API já atualizou mídias e incrementou config_versao.
+      // 4. Modo Desenvolvedor & Sincronização direta com Firebase (arquivos_esp Base64 + RTDB)
+      const arquivosBase64: Record<string, string> = {};
+
+      // Categoria ativa (ou primeira) para preencher foto1..5 e som1..5
+      const catAtiva = categoriaAcessada || categoriasList[0];
+      if (catAtiva && catAtiva.botoes) {
+        for (let bIdx = 0; bIdx < Math.min(catAtiva.botoes.length, 5); bIdx++) {
+          const b = catAtiva.botoes[bIdx];
+          const slot = bIdx + 1;
+
+          const imgSrc = b.imagemArquivo || b.imagem;
+          if (imgSrc) {
+            try {
+              const b64 = await processarImagemParaESP32(imgSrc);
+              if (b64) arquivosBase64[`foto${slot}`] = b64;
+            } catch (e) {
+              console.warn(`[Sync] Erro ao extrair Base64 da imagem foto${slot}:`, e);
+            }
+          }
+
+          const audSrc = b.audioArquivo || b.audio;
+          if (audSrc) {
+            try {
+              const b64 = await processarAudioParaESP32(audSrc);
+              if (b64) arquivosBase64[`som${slot}`] = b64;
+            } catch (e) {
+              console.warn(`[Sync] Erro ao extrair Base64 do áudio som${slot}:`, e);
+            }
+          }
+        }
+      }
+
+      // Fotos das categorias (cat1_foto, cat2_foto, cat3_foto)
+      for (let cIdx = 0; cIdx < Math.min(categoriasList.length, 3); cIdx++) {
+        const cat = categoriasList[cIdx];
+        const catImgSrc = cat.imagemArquivo || cat.imagem;
+        if (catImgSrc) {
+          try {
+            const b64 = await processarImagemParaESP32(catImgSrc);
+            if (b64) arquivosBase64[`cat${cIdx + 1}_foto`] = b64;
+          } catch (e) {
+            console.warn(`[Sync] Erro ao extrair Base64 de cat${cIdx + 1}_foto:`, e);
+          }
+        }
+      }
+
+      // Envia para o backend salvar no Firestore (arquivos_esp) e disparar o Realtime Database
+      try {
+        await api.post('/dispositivos/sincronizar-firebase', {
+          modo_desenvolvedor: modoDesenvolvedor || temDispositivo === false,
+          arquivos: arquivosBase64,
+          controle: {
+            atualizar: true,
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+      } catch (errSync) {
+        console.warn('[Sync] Falha na sincronização direta Firebase:', errSync);
+      }
+
+      // Sucesso na persistência!
       setTemAlteracoesPendentes(false);
       setCategoriasExcluidasIds([]);
       setBotoesExcluidos([]);
@@ -506,7 +580,9 @@ export default function Dispositivo() {
       setFeedback({
         tipo: 'sucesso',
         titulo: 'Alterações Salvas!',
-        mensagem: 'As mudanças chegam ao aparelho em alguns minutos, quando ele estiver conectado ao Wi-Fi.',
+        mensagem: modoDesenvolvedor || temDispositivo === false
+          ? 'Modo desenvolvedor: Mídias enviadas em Base64 para o Firestore e flag do Realtime Database disparada para o hardware!'
+          : 'As mudanças chegam ao aparelho em alguns minutos, quando ele estiver conectado ao Wi-Fi.',
       });
       carregar();
     } catch (err: unknown) {
@@ -1292,8 +1368,8 @@ export default function Dispositivo() {
                     : 'bg-blue-50 text-blue-800 border border-blue-200'
                 }`}
               >
-                <span>Modo Desenvolvedor Ativo (sem dispositivo vinculado)</span>
-                <span className="text-[11px] opacity-80 font-normal">Apenas simulação local</span>
+                <span>Modo Desenvolvedor Ativo (hardware direto)</span>
+                <span className="text-[11px] opacity-80 font-normal">Ao salvar, envia Base64 para arquivos_esp e ativa Realtime DB</span>
               </div>
             )}
             <section 
