@@ -307,7 +307,7 @@ export default function Home() {
             <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:-translate-y-2 hover:border-[#5F7DE3]/60 hover:shadow-2xl transition-all duration-300 ease-out group overflow-hidden cursor-default flex flex-col items-center gap-4">
               <div className="relative w-full h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-100">
                 <Image 
-                  src="/casa.jpeg" 
+                  src="/casaprototipo.jpeg" 
                   alt="Dispositivo Físico C.A.S.A." 
                   fill 
                   className="object-cover group-hover:scale-108 transition-transform duration-500 ease-out"
