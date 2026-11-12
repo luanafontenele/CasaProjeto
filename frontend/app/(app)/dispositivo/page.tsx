@@ -513,47 +513,61 @@ export default function Dispositivo() {
       }
 
       // 4. Modo Desenvolvedor & Sincronização direta com Firebase (arquivos_esp Base64 + RTDB)
+      // Mapeia até 3 categorias com até 5 botões cada (3x5 = 15 itens) + fotos das categorias
       const arquivosBase64: Record<string, string> = {};
 
-      // Categoria ativa (ou primeira) para preencher foto1..5 e som1..5
-      const catAtiva = categoriaAcessada || categoriasList[0];
-      if (catAtiva && catAtiva.botoes) {
-        for (let bIdx = 0; bIdx < Math.min(catAtiva.botoes.length, 5); bIdx++) {
-          const b = catAtiva.botoes[bIdx];
-          const slot = bIdx + 1;
-
-          const imgSrc = b.imagemArquivo || b.imagem;
-          if (imgSrc) {
-            try {
-              const b64 = await processarImagemParaESP32(imgSrc);
-              if (b64) arquivosBase64[`foto${slot}`] = b64;
-            } catch (e) {
-              console.warn(`[Sync] Erro ao extrair Base64 da imagem foto${slot}:`, e);
-            }
-          }
-
-          const audSrc = b.audioArquivo || b.audio;
-          if (audSrc) {
-            try {
-              const b64 = await processarAudioParaESP32(audSrc);
-              if (b64) arquivosBase64[`som${slot}`] = b64;
-            } catch (e) {
-              console.warn(`[Sync] Erro ao extrair Base64 do áudio som${slot}:`, e);
-            }
-          }
-        }
-      }
-
-      // Fotos das categorias (cat1_foto, cat2_foto, cat3_foto)
       for (let cIdx = 0; cIdx < Math.min(categoriasList.length, 3); cIdx++) {
         const cat = categoriasList[cIdx];
+        const catNum = cIdx + 1; // 1, 2, 3
+
+        // Foto da própria categoria (cat1_foto, cat2_foto, cat3_foto)
         const catImgSrc = cat.imagemArquivo || cat.imagem;
         if (catImgSrc) {
           try {
             const b64 = await processarImagemParaESP32(catImgSrc);
-            if (b64) arquivosBase64[`cat${cIdx + 1}_foto`] = b64;
+            if (b64) arquivosBase64[`cat${catNum}_foto`] = b64;
           } catch (e) {
-            console.warn(`[Sync] Erro ao extrair Base64 de cat${cIdx + 1}_foto:`, e);
+            console.warn(`[Sync] Erro ao extrair Base64 de cat${catNum}_foto:`, e);
+          }
+        }
+
+        // Botões / Ações da categoria (catX_fotoY e catX_somY)
+        if (cat.botoes && Array.isArray(cat.botoes)) {
+          for (let bIdx = 0; bIdx < Math.min(cat.botoes.length, 5); bIdx++) {
+            const b = cat.botoes[bIdx];
+            const slot = bIdx + 1; // 1, 2, 3, 4, 5
+
+            const imgSrc = b.imagemArquivo || b.imagem;
+            if (imgSrc) {
+              try {
+                const b64 = await processarImagemParaESP32(imgSrc);
+                if (b64) {
+                  arquivosBase64[`cat${catNum}_foto${slot}`] = b64;
+                  // Se for categoria 1, mantém também o alias foto1..5 para compatibilidade com firmwares legados
+                  if (catNum === 1) {
+                    arquivosBase64[`foto${slot}`] = b64;
+                  }
+                }
+              } catch (e) {
+                console.warn(`[Sync] Erro ao extrair Base64 de cat${catNum}_foto${slot}:`, e);
+              }
+            }
+
+            const audSrc = b.audioArquivo || b.audio;
+            if (audSrc) {
+              try {
+                const b64 = await processarAudioParaESP32(audSrc);
+                if (b64) {
+                  arquivosBase64[`cat${catNum}_som${slot}`] = b64;
+                  // Se for categoria 1, mantém também o alias som1..5 para compatibilidade com firmwares legados
+                  if (catNum === 1) {
+                    arquivosBase64[`som${slot}`] = b64;
+                  }
+                }
+              } catch (e) {
+                console.warn(`[Sync] Erro ao extrair Base64 de cat${catNum}_som${slot}:`, e);
+              }
+            }
           }
         }
       }
@@ -581,7 +595,7 @@ export default function Dispositivo() {
         tipo: 'sucesso',
         titulo: 'Alterações Salvas!',
         mensagem: modoDesenvolvedor || temDispositivo === false
-          ? 'Modo desenvolvedor: Mídias enviadas em Base64 para o Firestore e flag do Realtime Database disparada para o hardware!'
+          ? `Modo desenvolvedor: ${Object.keys(arquivosBase64).length} mídias enviadas em Base64 para o Firestore e flag do Realtime Database disparada para o hardware!`
           : 'As mudanças chegam ao aparelho em alguns minutos, quando ele estiver conectado ao Wi-Fi.',
       });
       carregar();
