@@ -269,6 +269,9 @@ export default function Dispositivo() {
   const [editBotaoAudio, setEditBotaoAudio] = useState<File | null>(null);
   const [editBotaoTipoAudio, setEditBotaoTipoAudio] = useState<'masculino' | 'feminino'>('feminino');
 
+  const [slotAcaoDestino, setSlotAcaoDestino] = useState<number | null>(null);
+  const [slotCategoriaDestino, setSlotCategoriaDestino] = useState<number | null>(null);
+
   const [modoAcao, setModoAcao] = useState<'predefinida' | 'personalizada'>('predefinida');
   const [acaoPredefinida, setAcaoPredefinida] = useState('');
   const [botaoRotulo, setBotaoRotulo] = useState('');
@@ -491,6 +494,7 @@ export default function Dispositivo() {
           if (b.isNovo || b.id.startsWith('temp_')) {
             await api.post(`/categorias/${catIdPersistido}/botoes`, {
               rotulo: b.rotulo,
+              ordem: typeof b.ordem === 'number' ? b.ordem : bIdx,
               imagem_id: bImgId,
               imagem: b.imagem,
               audio_id: bAudId,
@@ -502,6 +506,7 @@ export default function Dispositivo() {
               rotulo: b.rotulo,
               tipo_audio: b.tipo_audio || 'feminino',
             };
+            if (typeof b.ordem === 'number') body.ordem = b.ordem;
             if (bImgId) body.imagem_id = bImgId;
             if (bAudId) body.audio_id = bAudId;
             if (b.imagem) body.imagem = b.imagem;
@@ -518,7 +523,7 @@ export default function Dispositivo() {
 
       for (let cIdx = 0; cIdx < Math.min(categoriasList.length, 3); cIdx++) {
         const cat = categoriasList[cIdx];
-        const catNum = cIdx + 1; // 1, 2, 3
+        const catNum = (typeof cat.ordem === 'number' && cat.ordem >= 0 && cat.ordem < 3) ? (cat.ordem + 1) : (cIdx + 1);
 
         // Foto da própria categoria (cat1_foto, cat2_foto, cat3_foto)
         const catImgSrc = cat.imagemArquivo || cat.imagem;
@@ -546,7 +551,7 @@ export default function Dispositivo() {
         if (cat.botoes && Array.isArray(cat.botoes)) {
           for (let bIdx = 0; bIdx < Math.min(cat.botoes.length, 5); bIdx++) {
             const b = cat.botoes[bIdx];
-            const slot = bIdx + 1; // 1, 2, 3, 4, 5
+            const slot = (typeof b.ordem === 'number' && b.ordem >= 0 && b.ordem < 5) ? (b.ordem + 1) : (bIdx + 1);
 
             const imgSrc = b.imagemArquivo || b.imagem;
             if (imgSrc) {
@@ -623,9 +628,10 @@ export default function Dispositivo() {
     }
   };
 
-  const abrirModalCriarCategoria = () => {
+  const abrirModalCriarCategoria = (slotIndex?: number) => {
     emitirSomBip(600, 0.05);
     carregarPredefinidos();
+    setSlotCategoriaDestino(typeof slotIndex === 'number' ? slotIndex : null);
 
     const disponiveis = CATEGORIAS_CONFIG.filter((c) => {
       return !categoriasList.some(
@@ -659,8 +665,22 @@ export default function Dispositivo() {
     if (categoriasList.length >= 3) {
       setFeedback({ tipo: 'atencao', titulo: 'Limite Atingido', mensagem: 'O dispositivo aceita no máximo 3 categorias. Apague uma existente para adicionar outra.' });
       setShowAddModal(false);
+      setSlotCategoriaDestino(null);
       return;
     }
+
+    const proximaOrdemCategoria = () => {
+      if (slotCategoriaDestino !== null && slotCategoriaDestino >= 0 && slotCategoriaDestino < 3) {
+        return slotCategoriaDestino;
+      }
+      const ordensOcupadas = new Set(categoriasList.map((c) => c.ordem));
+      for (let i = 0; i < 3; i++) {
+        if (!ordensOcupadas.has(i)) return i;
+      }
+      return categoriasList.length;
+    };
+
+    const ordemCategoriaFinal = proximaOrdemCategoria();
 
     const nomeFinal = modoCategoria === 'predefinida'
       ? (predefinidosData?.categorias[categoriaPredefinidaId]?.nome || newCategoryName || categoriaPredefinidaId)
@@ -706,7 +726,7 @@ export default function Dispositivo() {
         nome: info?.nome || newCategoryName || categoriaPredefinidaId,
         slug: normalizarTexto(info?.nome || newCategoryName || categoriaPredefinidaId).replace(/\s+/g, '-'),
         cor: null,
-        ordem: categoriasList.length,
+        ordem: ordemCategoriaFinal,
         emoji: newCategoryEmoji || '⭐',
         imagem_id: null,
         imagem: newCategoryImagem ? URL.createObjectURL(newCategoryImagem) : (info?.imagem || null),
@@ -722,6 +742,7 @@ export default function Dispositivo() {
       setCategoriasList((prev) => [...prev, novaCat]);
       setTemAlteracoesPendentes(true);
       setShowAddModal(false);
+      setSlotCategoriaDestino(null);
       emitirSomBip(800, 0.1);
       setFeedback({
         tipo: 'sucesso',
@@ -747,7 +768,7 @@ export default function Dispositivo() {
         nome: newCategoryName.trim(),
         slug: normalizarTexto(newCategoryName).replace(/\s+/g, '-'),
         cor: null,
-        ordem: categoriasList.length,
+        ordem: ordemCategoriaFinal,
         emoji: newCategoryEmoji || '⭐',
         imagem_id: null,
         imagem: URL.createObjectURL(newCategoryImagem),
@@ -763,6 +784,7 @@ export default function Dispositivo() {
       setCategoriasList((prev) => [...prev, novaCat]);
       setTemAlteracoesPendentes(true);
       setShowAddModal(false);
+      setSlotCategoriaDestino(null);
       emitirSomBip(800, 0.1);
       setFeedback({
         tipo: 'sucesso',
@@ -1008,6 +1030,7 @@ export default function Dispositivo() {
     emitirSomBip(500, 0.05);
     setShowNovoBotao(false);
     setCategoriaParaAcao(null);
+    setSlotAcaoDestino(null);
     setModoAcao('predefinida');
     setAcaoPredefinida('');
     setBotaoRotulo('');
@@ -1016,7 +1039,7 @@ export default function Dispositivo() {
     setBotaoTipoAudio('feminino');
   };
 
-  const abrirModalCriarAcao = (cat: Cat) => {
+  const abrirModalCriarAcao = (cat: Cat, slotIndex?: number) => {
     emitirSomBip(600, 0.05);
     carregarPredefinidos();
     if ((cat.botoes?.length || 0) >= 5) {
@@ -1027,6 +1050,7 @@ export default function Dispositivo() {
       });
       return;
     }
+    setSlotAcaoDestino(typeof slotIndex === 'number' ? slotIndex : null);
     setCategoriaParaAcao(cat);
     setCategoriaAcessadaId(cat.id);
 
@@ -1081,6 +1105,19 @@ export default function Dispositivo() {
       (cat.botoes || []).map((b) => normalizarTexto(b.rotulo))
     );
 
+    const proximaOrdemAcao = (botoes: Botao[]) => {
+      if (slotAcaoDestino !== null && slotAcaoDestino >= 0 && slotAcaoDestino < 5) {
+        return slotAcaoDestino;
+      }
+      const ordensOcupadas = new Set((botoes || []).map((b) => b.ordem));
+      for (let i = 0; i < 5; i++) {
+        if (!ordensOcupadas.has(i)) return i;
+      }
+      return botoes?.length || 0;
+    };
+
+    const ordemAcaoFinal = proximaOrdemAcao(cat.botoes || []);
+
     if (modoAcao === 'predefinida') {
       const catId = identificarCategoriaId(cat.nome);
       let acaoInfo: InfoMidiaPredefinida | undefined;
@@ -1127,7 +1164,7 @@ export default function Dispositivo() {
         id: `temp_btn_${Date.now()}`,
         rotulo: nomeAcaoFinal,
         significado: null,
-        ordem: cat.botoes?.length || 0,
+        ordem: ordemAcaoFinal,
         imagem_id: null,
         imagem: botaoImagem ? URL.createObjectURL(botaoImagem) : (acaoInfo?.imagem || null),
         audio_id: null,
@@ -1183,7 +1220,7 @@ export default function Dispositivo() {
         id: `temp_btn_${Date.now()}`,
         rotulo: rotuloTrim,
         significado: null,
-        ordem: cat.botoes?.length || 0,
+        ordem: ordemAcaoFinal,
         imagem_id: null,
         imagem: URL.createObjectURL(botaoImagem),
         audio_id: null,
@@ -1501,12 +1538,12 @@ export default function Dispositivo() {
           categorias={categoriasList}
           categoriaAtivaId={categoriaAcessadaId}
           onSelecionarCategoria={(id) => setCategoriaAcessadaId(id)}
-          onAdicionarCategoria={() => {
+          onAdicionarCategoria={(slotIndex) => {
             if (categoriasList.length >= 3) {
               setFeedback({ tipo: 'atencao', titulo: 'Limite Atingido', mensagem: 'O dispositivo aceita no máximo 3 categorias. Apague uma existente para adicionar outra.' });
               return;
             }
-            abrirModalCriarCategoria();
+            abrirModalCriarCategoria(slotIndex);
           }}
           onEditarCategoria={(cat) => {
             const catCompleta = categoriasList.find((c) => c.id === cat.id);
@@ -1519,9 +1556,9 @@ export default function Dispositivo() {
               setCategoriaParaExcluir(catCompleta);
             }
           }}
-          onAdicionarAcao={(catId) => {
+          onAdicionarAcao={(catId, slotIndex) => {
             const cat = categoriasList.find((c) => c.id === catId);
-            if (cat) abrirModalCriarAcao(cat);
+            if (cat) abrirModalCriarAcao(cat, slotIndex);
           }}
           onEditarAcao={(botao, catId) => {
             const cat = categoriasList.find((c) => c.id === catId);
@@ -1802,7 +1839,9 @@ export default function Dispositivo() {
                 <Plus className="w-6 h-6" />
               </div>
               <div className="flex flex-col text-left">
-                <h3 className="text-xl font-bold">Adicionar Nova Ação</h3>
+                <h3 className="text-xl font-bold">
+                  {slotAcaoDestino !== null ? `Adicionar Ação no Botão ${slotAcaoDestino + 1}` : 'Adicionar Nova Ação'}
+                </h3>
                 <span className="text-xs text-slate-400">
                   Na categoria: <strong className={altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}>{(categoriaParaAcao || categoriaAcessada)?.nome}</strong> ({((categoriaParaAcao || categoriaAcessada)?.botoes?.length || 0)}/5)
                 </span>
@@ -2252,12 +2291,14 @@ export default function Dispositivo() {
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className={`${altoContraste ? 'bg-black border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-[#F3EFF5] border-indigo-100'} w-full max-w-md rounded-3xl p-8 shadow-2xl border relative flex flex-col items-center text-center max-h-[90vh] overflow-y-auto`}>
-            <button onClick={() => { emitirSomBip(500, 0.05); setShowAddModal(false); }} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
+            <button onClick={() => { emitirSomBip(500, 0.05); setShowAddModal(false); setSlotCategoriaDestino(null); }} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
               <X className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2 mb-2">
               <LayoutGrid className={`w-6 h-6 ${altoContraste ? 'text-amber-500' : 'text-[#5F7DE3]'}`} />
-              <h3 className={`text-xl font-bold ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}`}>Adicionar <span className="text-amber-500">Categoria</span></h3>
+              <h3 className={`text-xl font-bold ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}`}>
+                {slotCategoriaDestino !== null ? `Adicionar Categoria (Slot ${slotCategoriaDestino + 1})` : 'Adicionar Categoria'}
+              </h3>
             </div>
             
             <form onSubmit={handleAddCategory} className="w-full flex flex-col gap-4 text-left mt-4">

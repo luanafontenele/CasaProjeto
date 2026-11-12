@@ -54,10 +54,10 @@ interface SimuladorDispositivoProps {
   categorias: CategoriaSimulador[];
   categoriaAtivaId: string | null;
   onSelecionarCategoria: (id: string) => void;
-  onAdicionarCategoria: () => void;
+  onAdicionarCategoria: (slotIndex?: number) => void;
   onEditarCategoria?: (categoria: CategoriaSimulador) => void;
   onExcluirCategoria?: (categoria: CategoriaSimulador) => void;
-  onAdicionarAcao: (categoriaId: string) => void;
+  onAdicionarAcao: (categoriaId: string, slotIndex?: number) => void;
   onEditarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
   onExcluirAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
   onClicarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
@@ -267,7 +267,11 @@ export default function SimuladorDispositivo({
 
         {/* ───────────── TELAS SUPERIORES (3 CATEGORIAS) ───────────── */}
         {TOP_SLOTS.map((slot, index) => {
-          const cat = listaCategorias[index];
+          const cat =
+            listaCategorias.find((c) => c.ordem === index) ??
+            (listaCategorias.every((c) => typeof c.ordem !== 'number')
+              ? listaCategorias[index]
+              : undefined);
           const isAtiva = cat && categoriaAtiva?.id === cat.id;
 
           return (
@@ -351,7 +355,7 @@ export default function SimuladorDispositivo({
                   type="button"
                   onClick={() => {
                     emitirSomBip?.(600, 0.05);
-                    onAdicionarCategoria();
+                    onAdicionarCategoria(index);
                   }}
                   title="Slot vazio. Clique para adicionar uma categoria"
                   className="w-full h-full rounded-lg sm:rounded-xl border border-dashed border-slate-500/70 bg-slate-900/40 hover:bg-slate-900/80 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-white transition-all cursor-pointer p-1"
@@ -389,7 +393,11 @@ export default function SimuladorDispositivo({
 
         {/* ───────────── BOTÕES INFERIORES (5 AÇÕES) ───────────── */}
         {BOTTOM_SLOTS.map((slot, index) => {
-          const botao = categoriaAtiva?.botoes?.[index];
+          const botao =
+            categoriaAtiva?.botoes?.find((b) => b.ordem === index) ??
+            (categoriaAtiva?.botoes && categoriaAtiva.botoes.every((b) => typeof b.ordem !== 'number')
+              ? categoriaAtiva.botoes[index]
+              : undefined);
           const isPressionado = botaoPressionadoIndex === index;
 
           return (
@@ -476,9 +484,9 @@ export default function SimuladorDispositivo({
                   onClick={() => {
                     emitirSomBip?.(600, 0.05);
                     if (categoriaAtiva) {
-                      onAdicionarAcao(categoriaAtiva.id);
+                      onAdicionarAcao(categoriaAtiva.id, index);
                     } else {
-                      onAdicionarCategoria();
+                      onAdicionarCategoria(index);
                     }
                   }}
                   title={
