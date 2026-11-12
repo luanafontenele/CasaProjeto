@@ -531,6 +531,17 @@ export default function Dispositivo() {
           }
         }
 
+        // Som da própria categoria (cat1_som, cat2_som, cat3_som)
+        const catAudSrc = cat.audioArquivo || cat.audio;
+        if (catAudSrc) {
+          try {
+            const b64 = await processarAudioParaESP32(catAudSrc);
+            if (b64) arquivosBase64[`cat${catNum}_som`] = b64;
+          } catch (e) {
+            console.warn(`[Sync] Erro ao extrair Base64 de cat${catNum}_som:`, e);
+          }
+        }
+
         // Botões / Ações da categoria (catX_fotoY e catX_somY)
         if (cat.botoes && Array.isArray(cat.botoes)) {
           for (let bIdx = 0; bIdx < Math.min(cat.botoes.length, 5); bIdx++) {
