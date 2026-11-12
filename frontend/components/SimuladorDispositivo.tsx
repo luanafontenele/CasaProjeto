@@ -133,17 +133,17 @@ export default function SimuladorDispositivo({
 
   // Coordenadas exatas em % mapeadas do layout físico da carcaça casa.svg (viewBox 0 0 2752 1536)
   const TOP_SLOTS = [
-    { x: 28.63, y: 17.97, w: 11.01, h: 20.18 }, // Tela 1 (Categoria 1)
-    { x: 44.95, y: 17.97, w: 11.01, h: 20.18 }, // Tela 2 (Categoria 2)
-    { x: 61.16, y: 17.97, w: 11.01, h: 20.18 }, // Tela 3 (Categoria 3)
+    { x: 28.38, y: 17.56, w: 11.51, h: 21.00 }, // Tela 1 (Categoria 1)
+    { x: 44.70, y: 17.56, w: 11.51, h: 21.00 }, // Tela 2 (Categoria 2)
+    { x: 60.91, y: 17.56, w: 11.51, h: 21.00 }, // Tela 3 (Categoria 3)
   ];
 
   const BOTTOM_SLOTS = [
-    { x: 13.74, y: 64.06, w: 10.21, h: 18.10 }, // Botão 1
-    { x: 29.51, y: 64.06, w: 10.25, h: 18.10 }, // Botão 2
-    { x: 45.28, y: 64.06, w: 10.25, h: 18.10 }, // Botão 3
-    { x: 61.05, y: 64.06, w: 10.21, h: 18.10 }, // Botão 4
-    { x: 76.82, y: 64.06, w: 10.21, h: 18.10 }, // Botão 5
+    { x: 13.45, y: 63.60, w: 10.80, h: 19.00 }, // Botão 1
+    { x: 29.24, y: 63.60, w: 10.80, h: 19.00 }, // Botão 2
+    { x: 45.01, y: 63.60, w: 10.80, h: 19.00 }, // Botão 3
+    { x: 60.76, y: 63.60, w: 10.80, h: 19.00 }, // Botão 4
+    { x: 76.53, y: 63.60, w: 10.80, h: 19.00 }, // Botão 5
   ];
 
   return (
@@ -288,7 +288,7 @@ export default function SimuladorDispositivo({
                 width: `${slot.w}%`,
                 height: `${slot.h}%`,
               }}
-              className="absolute z-10 p-[1%]"
+              className="absolute z-10 p-0"
             >
               {cat ? (
                 <div
@@ -454,7 +454,7 @@ export default function SimuladorDispositivo({
                 setSlotArrastando(null);
                 setSlotSobre(null);
               }}
-              className={`absolute z-10 p-[0.8%] transition-all duration-300 ease-out ${
+              className={`absolute z-10 p-0 transition-all duration-300 ease-out ${
                 isSobre ? 'scale-110 z-30' : ''
               }`}
             >
