@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, erroParaFeedback } from '@/lib/api';
 import { useUsuario } from '@/lib/UsuarioContext';
-import { ChevronDown, X, Search, Filter, Plus, Pencil, Trash2, LayoutGrid, CheckCircle2, XCircle, AlertTriangle, FolderOpen, Volume2, Eye, Menu, Image as ImageIcon, Mic, Folder, Save } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, Search, Filter, Plus, Pencil, Trash2, LayoutGrid, CheckCircle2, XCircle, AlertTriangle, FolderOpen, Volume2, Eye, Menu, Image as ImageIcon, Mic, Folder, Save } from 'lucide-react';
 
 import Sidebar from '@/components/Sidebar';
 import BarraTopo from '@/components/BarraTopo';
@@ -268,6 +268,7 @@ export default function Dispositivo() {
   const [editBotaoImagem, setEditBotaoImagem] = useState<File | null>(null);
   const [editBotaoAudio, setEditBotaoAudio] = useState<File | null>(null);
   const [editBotaoTipoAudio, setEditBotaoTipoAudio] = useState<'masculino' | 'feminino'>('feminino');
+  const [editBotaoOrdem, setEditBotaoOrdem] = useState<number>(0);
 
   const [slotAcaoDestino, setSlotAcaoDestino] = useState<number | null>(null);
   const [slotCategoriaDestino, setSlotCategoriaDestino] = useState<number | null>(null);
@@ -920,6 +921,7 @@ export default function Dispositivo() {
     setEditBotaoImagem(null);
     setEditBotaoAudio(null);
     setEditBotaoTipoAudio(botao.tipo_audio || 'feminino');
+    setEditBotaoOrdem(typeof botao.ordem === 'number' ? botao.ordem : (catAlvo?.botoes?.indexOf(botao) ?? 0));
     setShowEditBotaoModal(botao);
   };
 
@@ -975,13 +977,20 @@ export default function Dispositivo() {
     setCategoriasList((prev) =>
       prev.map((c) => {
         if (c.id !== editBotaoCatId) return c;
-        return {
-          ...c,
-          botoes: (c.botoes || []).map((b) => {
-            if (b.id !== btnAlvo.id) return b;
+
+        const ordemAntiga = typeof btnAlvo.ordem === 'number' ? btnAlvo.ordem : 0;
+        const novaOrdem = editBotaoOrdem;
+
+        const outroBotaoNaOrdem = novaOrdem !== ordemAntiga
+          ? (c.botoes || []).find((b) => b.id !== btnAlvo.id && b.ordem === novaOrdem)
+          : null;
+
+        const botoesAtualizados = (c.botoes || []).map((b) => {
+          if (b.id === btnAlvo.id) {
             return {
               ...b,
               rotulo: nomeAcaoFinal,
+              ordem: novaOrdem,
               tipo_audio: editBotaoTipoAudio,
               imagem: editBotaoImagem ? URL.createObjectURL(editBotaoImagem) : (acaoInfo?.imagem || b.imagem),
               audio: editBotaoAudio ? URL.createObjectURL(editBotaoAudio) : (audioUrlParaUsar || b.audio),
@@ -989,7 +998,22 @@ export default function Dispositivo() {
               audioArquivo: editBotaoAudio || b.audioArquivo,
               isModificado: true,
             };
-          }),
+          }
+          if (outroBotaoNaOrdem && b.id === outroBotaoNaOrdem.id) {
+            return {
+              ...b,
+              ordem: ordemAntiga,
+              isModificado: true,
+            };
+          }
+          return b;
+        });
+
+        botoesAtualizados.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+
+        return {
+          ...c,
+          botoes: botoesAtualizados,
           isModificado: true,
         };
       })
@@ -1050,7 +1074,19 @@ export default function Dispositivo() {
       });
       return;
     }
-    setSlotAcaoDestino(typeof slotIndex === 'number' ? slotIndex : null);
+
+    const ordensOcupadas = new Set((cat.botoes || []).map((b) => b.ordem));
+    let slotEscolhido = typeof slotIndex === 'number' ? slotIndex : null;
+    if (slotEscolhido === null) {
+      for (let i = 0; i < 5; i++) {
+        if (!ordensOcupadas.has(i)) {
+          slotEscolhido = i;
+          break;
+        }
+      }
+      if (slotEscolhido === null) slotEscolhido = 0;
+    }
+    setSlotAcaoDestino(slotEscolhido);
     setCategoriaParaAcao(cat);
     setCategoriaAcessadaId(cat.id);
 
@@ -1105,11 +1141,11 @@ export default function Dispositivo() {
       (cat.botoes || []).map((b) => normalizarTexto(b.rotulo))
     );
 
+    const ordensOcupadas = new Set((cat.botoes || []).map((b) => b.ordem));
     const proximaOrdemAcao = (botoes: Botao[]) => {
       if (slotAcaoDestino !== null && slotAcaoDestino >= 0 && slotAcaoDestino < 5) {
         return slotAcaoDestino;
       }
-      const ordensOcupadas = new Set((botoes || []).map((b) => b.ordem));
       for (let i = 0; i < 5; i++) {
         if (!ordensOcupadas.has(i)) return i;
       }
@@ -1117,6 +1153,14 @@ export default function Dispositivo() {
     };
 
     const ordemAcaoFinal = proximaOrdemAcao(cat.botoes || []);
+
+    let primeiroSlotLivre = 0;
+    for (let i = 0; i < 5; i++) {
+      if (!ordensOcupadas.has(i) && i !== ordemAcaoFinal) {
+        primeiroSlotLivre = i;
+        break;
+      }
+    }
 
     if (modoAcao === 'predefinida') {
       const catId = identificarCategoriaId(cat.nome);
@@ -1178,9 +1222,17 @@ export default function Dispositivo() {
       setCategoriasList((prev) =>
         prev.map((c) => {
           if (c.id !== cat.id) return c;
+          const novosBotoes = (c.botoes || []).map((b) => {
+            if (b.ordem === ordemAcaoFinal) {
+              return { ...b, ordem: primeiroSlotLivre, isModificado: true };
+            }
+            return b;
+          });
+          novosBotoes.push(novoBotao);
+          novosBotoes.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
           return {
             ...c,
-            botoes: [...(c.botoes || []), novoBotao],
+            botoes: novosBotoes,
             isModificado: true,
           };
         })
@@ -1234,9 +1286,17 @@ export default function Dispositivo() {
       setCategoriasList((prev) =>
         prev.map((c) => {
           if (c.id !== cat.id) return c;
+          const novosBotoes = (c.botoes || []).map((b) => {
+            if (b.ordem === ordemAcaoFinal) {
+              return { ...b, ordem: primeiroSlotLivre, isModificado: true };
+            }
+            return b;
+          });
+          novosBotoes.push(novoBotao);
+          novosBotoes.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
           return {
             ...c,
-            botoes: [...(c.botoes || []), novoBotao],
+            botoes: novosBotoes,
             isModificado: true,
           };
         })
@@ -1278,6 +1338,44 @@ export default function Dispositivo() {
       titulo: 'Ação Removida',
       mensagem: `A ação "${botao.rotulo}" foi excluída da prancha. Pressione "Salvar alterações" para confirmar no banco.`,
     });
+  };
+
+  const moverBotaoOrdem = (catId: string, botaoId: string, direcao: 'cima' | 'baixo') => {
+    emitirSomBip(650, 0.05);
+    setCategoriasList((prev) =>
+      prev.map((cat) => {
+        if (cat.id !== catId || !Array.isArray(cat.botoes)) return cat;
+
+        const botaoAlvo = cat.botoes.find((b) => b.id === botaoId);
+        if (!botaoAlvo) return cat;
+
+        const ordemAtual = typeof botaoAlvo.ordem === 'number' ? botaoAlvo.ordem : cat.botoes.indexOf(botaoAlvo);
+        const novaOrdem = direcao === 'cima' ? ordemAtual - 1 : ordemAtual + 1;
+
+        if (novaOrdem < 0 || novaOrdem > 4) return cat;
+
+        const outroBotao = cat.botoes.find((b) => b.id !== botaoId && b.ordem === novaOrdem);
+
+        const novosBotoes = cat.botoes.map((b) => {
+          if (b.id === botaoId) {
+            return { ...b, ordem: novaOrdem, isModificado: true };
+          }
+          if (outroBotao && b.id === outroBotao.id) {
+            return { ...b, ordem: ordemAtual, isModificado: true };
+          }
+          return b;
+        });
+
+        novosBotoes.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+
+        return {
+          ...cat,
+          botoes: novosBotoes,
+          isModificado: true,
+        };
+      })
+    );
+    setTemAlteracoesPendentes(true);
   };
 
   const tocarAudio = async (botao: Botao) => {
@@ -1721,80 +1819,124 @@ export default function Dispositivo() {
 
                   {Array.isArray(cat.botoes) && cat.botoes.length > 0 ? (
                     <div className="flex flex-col gap-2">
-                      {cat.botoes.map((botao, bIdx) => (
-                        <div
-                          key={botao.id}
-                          className={`p-2.5 rounded-2xl border flex items-center justify-between transition-all ${
-                            altoContraste
-                              ? 'bg-zinc-900 border-amber-500/70 text-amber-300'
-                              : modoEscuro
-                              ? 'bg-slate-800/80 border-slate-700/80 text-slate-200'
-                              : 'bg-white border-slate-200/80 text-slate-800 shadow-2xs'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border ${
-                              altoContraste
-                                ? 'bg-black text-amber-400 border-amber-400'
-                                : 'bg-blue-500/10 text-blue-600 border-blue-500/20'
-                            }`}>
-                              {botao.imagem ? (
-                                <img src={botao.imagem} alt={botao.rotulo} className="w-full h-full object-cover" />
-                              ) : (
-                                <span className="text-[10px] font-bold">B{bIdx + 1}</span>
-                              )}
-                            </div>
-                            <div className="flex flex-col truncate">
-                              <span className="text-xs font-bold truncate">{botao.rotulo}</span>
-                              <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                                <Mic className="w-2.5 h-2.5 text-blue-500" />
-                                {botao.tipo_audio || 'feminino'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => tocarAudio(botao)}
-                              title="Tocar áudio"
-                              className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                      {[...(cat.botoes || [])]
+                        .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+                        .map((botao, bIdx) => {
+                          const ordemBotao = typeof botao.ordem === 'number' ? botao.ordem : bIdx;
+                          return (
+                            <div
+                              key={botao.id}
+                              className={`p-2.5 rounded-2xl border flex items-center justify-between transition-all ${
                                 altoContraste
-                                  ? 'text-amber-400 border-amber-400 hover:bg-zinc-800'
-                                  : 'text-[#5F7DE3] border-[#5F7DE3]/20 hover:bg-[#5F7DE3]/10'
-                              }`}
-                            >
-                              <Volume2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => abrirModalEditarAcao(botao, cat.id)}
-                              title="Editar ação"
-                              className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
-                                altoContraste
-                                  ? 'text-amber-400 border-amber-400 hover:bg-zinc-800'
+                                  ? 'bg-zinc-900 border-amber-500/70 text-amber-300'
                                   : modoEscuro
-                                  ? 'text-slate-300 border-slate-700 hover:bg-slate-800'
-                                  : 'text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  ? 'bg-slate-800/80 border-slate-700/80 text-slate-200'
+                                  : 'bg-white border-slate-200/80 text-slate-800 shadow-2xs'
                               }`}
                             >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAcaoParaExcluir({ catId: cat.id, catNome: cat.nome, botao })}
-                              title="Excluir ação"
-                              className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
-                                altoContraste
-                                  ? 'text-rose-500 border-rose-500 hover:bg-zinc-800'
-                                  : 'text-rose-500 hover:bg-rose-50 border-rose-200 dark:border-rose-900/50 dark:hover:bg-rose-950/50'
-                              }`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border ${
+                                  altoContraste
+                                    ? 'bg-black text-amber-400 border-amber-400'
+                                    : 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                                }`}>
+                                  {botao.imagem ? (
+                                    <img src={botao.imagem} alt={botao.rotulo} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-[10px] font-bold">B{ordemBotao + 1}</span>
+                                  )}
+                                </div>
+                                <div className="flex flex-col truncate">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${
+                                      altoContraste
+                                        ? 'bg-amber-400 text-black'
+                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300'
+                                    }`}>
+                                      Botão {ordemBotao + 1}
+                                    </span>
+                                    <span className="text-xs font-bold truncate">{botao.rotulo}</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                    <Mic className="w-2.5 h-2.5 text-blue-500" />
+                                    {botao.tipo_audio || 'feminino'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                {/* SETAS PARA MOVER BOTÃO DE LUGAR NO HARDWARE */}
+                                <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 mr-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={ordemBotao <= 0}
+                                    onClick={() => moverBotaoOrdem(cat.id, botao.id, 'cima')}
+                                    title={ordemBotao <= 0 ? 'Já está no primeiro botão' : `Mover para Botão ${ordemBotao}`}
+                                    className={`p-1 rounded-lg transition-colors ${
+                                      ordemBotao <= 0
+                                        ? 'opacity-20 cursor-not-allowed text-slate-400'
+                                        : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer shadow-2xs'
+                                    }`}
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={ordemBotao >= 4}
+                                    onClick={() => moverBotaoOrdem(cat.id, botao.id, 'baixo')}
+                                    title={ordemBotao >= 4 ? 'Já está no último botão' : `Mover para Botão ${ordemBotao + 2}`}
+                                    className={`p-1 rounded-lg transition-colors ${
+                                      ordemBotao >= 4
+                                        ? 'opacity-20 cursor-not-allowed text-slate-400'
+                                        : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer shadow-2xs'
+                                    }`}
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => tocarAudio(botao)}
+                                  title="Tocar áudio"
+                                  className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                                    altoContraste
+                                      ? 'text-amber-400 border-amber-400 hover:bg-zinc-800'
+                                      : 'text-[#5F7DE3] border-[#5F7DE3]/20 hover:bg-[#5F7DE3]/10'
+                                  }`}
+                                >
+                                  <Volume2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => abrirModalEditarAcao(botao, cat.id)}
+                                  title="Editar ação"
+                                  className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                                    altoContraste
+                                      ? 'text-amber-400 border-amber-400 hover:bg-zinc-800'
+                                      : modoEscuro
+                                      ? 'text-slate-300 border-slate-700 hover:bg-slate-800'
+                                      : 'text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setAcaoParaExcluir({ catId: cat.id, catNome: cat.nome, botao })}
+                                  title="Excluir ação"
+                                  className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                                    altoContraste
+                                      ? 'text-rose-500 border-rose-500 hover:bg-zinc-800'
+                                      : 'text-rose-500 hover:bg-rose-50 border-rose-200 dark:border-rose-900/50 dark:hover:bg-rose-950/50'
+                                  }`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
                   ) : (
                     <div className={`p-4 rounded-2xl border border-dashed text-center ${
@@ -1849,6 +1991,31 @@ export default function Dispositivo() {
             </div>
 
             <form onSubmit={handleSalvarBotao} className="flex flex-col gap-4">
+              {/* POSIÇÃO NO DISPOSITIVO (HARDWARE) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+                  <LayoutGrid className="w-3.5 h-3.5 text-[#5F7DE3]" /> Posição no Dispositivo (Hardware)
+                </label>
+                <select
+                  value={slotAcaoDestino ?? 0}
+                  onChange={(e) => {
+                    emitirSomBip(600, 0.05);
+                    setSlotAcaoDestino(Number(e.target.value));
+                  }}
+                  className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700'} border rounded-2xl px-4 py-3 text-xs focus:outline-none shadow-xs cursor-pointer`}
+                >
+                  {[0, 1, 2, 3, 4].map((slot) => {
+                    const catAlvo = categoriaParaAcao || categoriaAcessada;
+                    const ocupante = (catAlvo?.botoes || []).find((b) => b.ordem === slot);
+                    return (
+                      <option key={slot} value={slot}>
+                        Botão {slot + 1} {ocupante ? `— Ocupado (${ocupante.rotulo} será movido)` : '— (Livre)'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
               {/* SELECT DE TIPO / ORIGEM DA AÇÃO */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[11px] text-slate-400 font-medium">Origem da Ação</label>
@@ -2981,6 +3148,32 @@ export default function Dispositivo() {
             </div>
 
             <form onSubmit={handleSalvarEdicaoBotao} className="flex flex-col gap-4">
+              {/* POSIÇÃO NO DISPOSITIVO (HARDWARE) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+                  <LayoutGrid className="w-3.5 h-3.5 text-[#5F7DE3]" /> Posição no Dispositivo (Hardware)
+                </label>
+                <select
+                  value={editBotaoOrdem}
+                  onChange={(e) => {
+                    emitirSomBip(600, 0.05);
+                    setEditBotaoOrdem(Number(e.target.value));
+                  }}
+                  className={`w-full ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700'} border rounded-2xl px-4 py-3 text-xs focus:outline-none shadow-xs cursor-pointer`}
+                >
+                  {[0, 1, 2, 3, 4].map((slot) => {
+                    const catAlvo = categoriasList.find((c) => c.id === editBotaoCatId);
+                    const ocupante = (catAlvo?.botoes || []).find((b) => b.id !== showEditBotaoModal.id && b.ordem === slot);
+                    const isAtual = (showEditBotaoModal.ordem ?? 0) === slot;
+                    return (
+                      <option key={slot} value={slot}>
+                        Botão {slot + 1} {isAtual ? '— (Posição Atual)' : ocupante ? `— Inverter com "${ocupante.rotulo}"` : '— (Livre)'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
               {/* SELECT DE TIPO / ORIGEM DA AÇÃO */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[11px] text-slate-400 font-medium">Origem da Ação</label>
