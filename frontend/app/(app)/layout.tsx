@@ -27,6 +27,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && (window as unknown as { Cypress?: boolean }).Cypress && sessionStorage.getItem('cypress_mock_auth') === 'true') {
+      console.log('[DEBUG AppLayout] Cypress Mock Auth detectado. Acesso liberado para testes.');
+      setPronto(true);
+      return;
+    }
     console.log('[DEBUG AppLayout] Iniciando verificação de autenticação...');
     return onAuthStateChanged(auth, (user) => {
       console.log('[DEBUG AppLayout] Estado de autenticação alterado:', {
