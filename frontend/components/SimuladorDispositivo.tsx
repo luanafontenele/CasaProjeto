@@ -24,9 +24,31 @@ export type CategoriaSimulador = {
   emoji?: string;
   imagem_id?: string | null;
   imagem?: string | null;
+  audio_id?: string | null;
+  audio?: string | null;
   tipo_audio?: 'masculino' | 'feminino';
+  audioArquivo?: File | null;
   botoes?: BotaoSimulador[];
 };
+
+function resolverAudioSrc(audio?: string | null, audioArquivo?: any): string | null {
+  if (audioArquivo && typeof audioArquivo === 'object' && typeof URL !== 'undefined') {
+    try {
+      return URL.createObjectURL(audioArquivo);
+    } catch {
+      // Ignora erro
+    }
+  }
+  if (!audio) return null;
+  if (audio.startsWith('http://') || audio.startsWith('https://') || audio.startsWith('data:') || audio.startsWith('blob:')) {
+    return audio;
+  }
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+  if (audio.startsWith('/midias/')) {
+    return `${apiBase}${audio}`;
+  }
+  return audio;
+}
 
 interface SimuladorDispositivoProps {
   categorias: CategoriaSimulador[];
@@ -64,13 +86,30 @@ export default function SimuladorDispositivo({
   const categoriaAtiva =
     listaCategorias.find((c) => c.id === categoriaAtivaId) ?? (listaCategorias.length > 0 ? listaCategorias[0] : null);
 
+  const tocarSomCategoria = (cat: CategoriaSimulador) => {
+    const src = resolverAudioSrc(cat.audio, (cat as any).audioArquivo);
+    if (src) {
+      try {
+        const audioEl = new Audio(src);
+        audioEl.play().catch(() => {
+          emitirSomBip?.(650, 0.06);
+        });
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    emitirSomBip?.(650, 0.06);
+  };
+
   const tocarSomBotao = (b: BotaoSimulador, index: number) => {
     setBotaoPressionadoIndex(index);
     setTimeout(() => setBotaoPressionadoIndex(null), 300);
 
-    if (b.audio) {
+    const src = resolverAudioSrc(b.audio, (b as any).audioArquivo);
+    if (src) {
       try {
-        const audioEl = new Audio(b.audio);
+        const audioEl = new Audio(src);
         audioEl.play().catch(() => {
           emitirSomBip?.(520, 0.1);
         });
@@ -184,7 +223,11 @@ export default function SimuladorDispositivo({
                   <button
                     key={cat.id}
                     onClick={() => {
-                      emitirSomBip?.(650, 0.05);
+                      if (modoInteracao === 'acionar') {
+                        tocarSomCategoria(cat);
+                      } else {
+                        emitirSomBip?.(650, 0.05);
+                      }
                       onSelecionarCategoria(cat.id);
                     }}
                     className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -241,7 +284,7 @@ export default function SimuladorDispositivo({
                       emitirSomBip?.(600, 0.05);
                       onEditarCategoria(cat);
                     } else {
-                      emitirSomBip?.(650, 0.06);
+                      tocarSomCategoria(cat);
                       onSelecionarCategoria(cat.id);
                     }
                   }}
