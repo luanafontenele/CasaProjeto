@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Volume2, Folder, Sparkles, Check, Image as ImageIcon, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Volume2, Folder, Sparkles, Check, Image as ImageIcon, Pencil, Trash2, GripVertical } from 'lucide-react';
 
 export type BotaoSimulador = {
   id: string;
@@ -61,6 +61,7 @@ interface SimuladorDispositivoProps {
   onEditarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
   onExcluirAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
   onClicarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
+  onTrocarOrdemAcoes?: (categoriaId: string, slotOrigem: number, slotDestino: number) => void;
   modoEscuro?: boolean;
   altoContraste?: boolean;
   emitirSomBip?: (freq?: number, dur?: number) => void;
@@ -77,12 +78,16 @@ export default function SimuladorDispositivo({
   onEditarAcao,
   onExcluirAcao,
   onClicarAcao,
+  onTrocarOrdemAcoes,
   modoEscuro = false,
   altoContraste = false,
   emitirSomBip,
 }: SimuladorDispositivoProps) {
   const [botaoPressionadoIndex, setBotaoPressionadoIndex] = useState<number | null>(null);
   const [modoInteracao, setModoInteracao] = useState<'acionar' | 'editar'>('acionar');
+  const [slotArrastando, setSlotArrastando] = useState<number | null>(null);
+  const [slotSobre, setSlotSobre] = useState<number | null>(null);
+  const [animandoTroca, setAnimandoTroca] = useState<{ de: number; para: number } | null>(null);
 
   const listaCategorias = Array.isArray(categorias) ? categorias : [];
 
@@ -318,37 +323,39 @@ export default function SimuladorDispositivo({
                     </div>
                   )}
 
-                  {/* BOTÕES DE EDIÇÃO E EXCLUSÃO */}
-                  <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
-                    {onEditarCategoria && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          emitirSomBip?.(600, 0.05);
-                          onEditarCategoria(cat);
-                        }}
-                        title={`Editar categoria ${cat.nome}`}
-                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
-                      >
-                        <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                      </button>
-                    )}
-                    {onExcluirCategoria && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          emitirSomBip?.(600, 0.05);
-                          onExcluirCategoria(cat);
-                        }}
-                        title={`Excluir categoria ${cat.nome}`}
-                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
-                      >
-                        <Trash2 className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  {/* BOTÕES DE EDIÇÃO E EXCLUSÃO (APENAS NO MODO EDITAR) */}
+                  {modoInteracao === 'editar' && (
+                    <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
+                      {onEditarCategoria && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            emitirSomBip?.(600, 0.05);
+                            onEditarCategoria(cat);
+                          }}
+                          title={`Editar categoria ${cat.nome}`}
+                          className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                        >
+                          <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                        </button>
+                      )}
+                      {onExcluirCategoria && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            emitirSomBip?.(600, 0.05);
+                            onExcluirCategoria(cat);
+                          }}
+                          title={`Excluir categoria ${cat.nome}`}
+                          className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                        >
+                          <Trash2 className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button
@@ -399,6 +406,9 @@ export default function SimuladorDispositivo({
               ? categoriaAtiva.botoes[index]
               : undefined);
           const isPressionado = botaoPressionadoIndex === index;
+          const isArrastando = slotArrastando === index;
+          const isSobre = slotSobre === index && slotArrastando !== index;
+          const isTrocando = animandoTroca && (animandoTroca.de === index || animandoTroca.para === index);
 
           return (
             <div
@@ -409,10 +419,58 @@ export default function SimuladorDispositivo({
                 width: `${slot.w}%`,
                 height: `${slot.h}%`,
               }}
-              className="absolute z-10 p-[0.8%]"
+              onDragOver={(e) => {
+                if (modoInteracao === 'editar' && slotArrastando !== null) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDragEnter={(e) => {
+                if (modoInteracao === 'editar' && slotArrastando !== null) {
+                  e.preventDefault();
+                  setSlotSobre(index);
+                }
+              }}
+              onDragLeave={(e) => {
+                if (slotSobre === index) {
+                  setSlotSobre(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (
+                  modoInteracao === 'editar' &&
+                  slotArrastando !== null &&
+                  slotArrastando !== index &&
+                  categoriaAtiva
+                ) {
+                  const de = slotArrastando;
+                  const para = index;
+                  setAnimandoTroca({ de, para });
+                  emitirSomBip?.(750, 0.06);
+                  onTrocarOrdemAcoes?.(categoriaAtiva.id, de, para);
+                  setTimeout(() => setAnimandoTroca(null), 350);
+                }
+                setSlotArrastando(null);
+                setSlotSobre(null);
+              }}
+              className={`absolute z-10 p-[0.8%] transition-all duration-300 ease-out ${
+                isSobre ? 'scale-110 z-30' : ''
+              }`}
             >
               {botao ? (
                 <div
+                  draggable={modoInteracao === 'editar'}
+                  onDragStart={(e) => {
+                    if (modoInteracao !== 'editar') return;
+                    setSlotArrastando(index);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(index));
+                  }}
+                  onDragEnd={() => {
+                    setSlotArrastando(null);
+                    setSlotSobre(null);
+                  }}
                   onClick={() => {
                     if (modoInteracao === 'editar' && onEditarAcao && categoriaAtiva) {
                       emitirSomBip?.(600, 0.05);
@@ -424,10 +482,22 @@ export default function SimuladorDispositivo({
                       }
                     }
                   }}
-                  title={botao.rotulo}
-                  className={`w-full h-full rounded-xl sm:rounded-2xl overflow-hidden relative cursor-pointer transition-transform duration-100 shadow-md group ${
+                  title={
                     modoInteracao === 'editar'
-                      ? 'border-amber-400 ring-2 ring-amber-400/80 hover:scale-[1.03]'
+                      ? `Botão ${index + 1}: ${botao.rotulo} (Arraste e solte sobre outro botão para trocar posições)`
+                      : botao.rotulo
+                  }
+                  className={`w-full h-full rounded-xl sm:rounded-2xl overflow-hidden relative transition-all duration-300 ease-out shadow-md group ${
+                    modoInteracao === 'editar'
+                      ? 'cursor-grab active:cursor-grabbing border-amber-400 ring-2 ring-amber-400/80 hover:ring-amber-300 hover:scale-[1.03]'
+                      : 'cursor-pointer'
+                  } ${
+                    isArrastando
+                      ? 'opacity-30 scale-90 ring-4 ring-blue-500 shadow-2xl rotate-2'
+                      : isSobre
+                      ? 'ring-4 ring-amber-400 bg-amber-400/30 scale-105 shadow-2xl brightness-110'
+                      : isTrocando
+                      ? 'scale-105 ring-4 ring-emerald-400 brightness-110'
                       : isPressionado
                       ? 'scale-95 brightness-125 ring-2 ring-blue-400'
                       : 'hover:scale-[1.02] ring-1 ring-slate-700/60'
@@ -438,7 +508,7 @@ export default function SimuladorDispositivo({
                     <img
                       src={botao.imagem}
                       alt={botao.rotulo}
-                      className="w-full h-full object-cover absolute inset-0"
+                      className="w-full h-full object-cover absolute inset-0 pointer-events-none"
                     />
                   ) : (
                     <div className="w-full h-full bg-slate-900 flex items-center justify-center">
@@ -446,37 +516,47 @@ export default function SimuladorDispositivo({
                     </div>
                   )}
 
-                  {/* BOTÕES DE EDIÇÃO E EXCLUSÃO */}
-                  <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
-                    {onEditarAcao && categoriaAtiva && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          emitirSomBip?.(600, 0.05);
-                          onEditarAcao(botao, categoriaAtiva.id);
-                        }}
-                        title={`Editar ação: ${botao.rotulo}`}
-                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
-                      >
-                        <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                      </button>
-                    )}
-                    {onExcluirAcao && categoriaAtiva && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          emitirSomBip?.(600, 0.05);
-                          onExcluirAcao(botao, categoriaAtiva.id);
-                        }}
-                        title={`Excluir ação: ${botao.rotulo}`}
-                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
-                      >
-                        <Trash2 className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  {/* BADGE DE DRAG & DROP E IDENTIFICADOR DO BOTÃO (APENAS NO MODO EDITAR) */}
+                  {modoInteracao === 'editar' && (
+                    <div className="absolute bottom-1 left-1 z-20 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-xs text-[8px] sm:text-[10px] font-bold text-amber-300 pointer-events-none shadow-md border border-amber-400/30 select-none">
+                      <GripVertical className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400" />
+                      <span>B{index + 1}</span>
+                    </div>
+                  )}
+
+                  {/* BOTÕES DE EDIÇÃO E EXCLUSÃO (APENAS NO MODO EDITAR) */}
+                  {modoInteracao === 'editar' && (
+                    <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
+                      {onEditarAcao && categoriaAtiva && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            emitirSomBip?.(600, 0.05);
+                            onEditarAcao(botao, categoriaAtiva.id);
+                          }}
+                          title={`Editar ação: ${botao.rotulo}`}
+                          className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                        >
+                          <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                        </button>
+                      )}
+                      {onExcluirAcao && categoriaAtiva && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            emitirSomBip?.(600, 0.05);
+                            onExcluirAcao(botao, categoriaAtiva.id);
+                          }}
+                          title={`Excluir ação: ${botao.rotulo}`}
+                          className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                        >
+                          <Trash2 className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button
@@ -490,15 +570,21 @@ export default function SimuladorDispositivo({
                     }
                   }}
                   title={
-                    categoriaAtiva
+                    isSobre
+                      ? `Soltar aqui para mover para o Botão ${index + 1}`
+                      : categoriaAtiva
                       ? `Slot ${index + 1} vazio. Clique para adicionar ação nesta categoria.`
                       : 'Cadastre uma categoria primeiro.'
                   }
-                  className="w-full h-full rounded-xl sm:rounded-2xl border border-dashed border-slate-500/60 bg-slate-900/30 hover:bg-slate-900/70 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-white transition-all cursor-pointer p-1"
+                  className={`w-full h-full rounded-xl sm:rounded-2xl border border-dashed flex flex-col items-center justify-center gap-1 transition-all duration-300 ease-out cursor-pointer p-1 ${
+                    isSobre
+                      ? 'border-amber-400 ring-4 ring-amber-400/80 bg-amber-400/20 text-amber-300 scale-105 shadow-xl'
+                      : 'border-slate-500/60 bg-slate-900/30 hover:bg-slate-900/70 text-slate-400 hover:text-white'
+                  }`}
                 >
-                  <Plus className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                  <Plus className={`transition-transform duration-300 ${isSobre ? 'w-5 h-5 sm:w-6 sm:h-6 text-amber-400 scale-125' : 'w-4 h-4 sm:w-5 sm:h-5 text-slate-400'}`} />
                   <span className="text-[7px] sm:text-[9px] font-semibold text-center">
-                    + Ação {index + 1}
+                    {isSobre ? `Mover para B${index + 1}` : `+ Ação ${index + 1}`}
                   </span>
                 </button>
               )}
@@ -511,7 +597,9 @@ export default function SimuladorDispositivo({
       <div className="flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 gap-2">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-blue-500 inline-block animate-pulse"></span>
-          Clique em qualquer tela ou botão no simulador para selecionar, testar o som ou editar.
+          {modoInteracao === 'editar'
+            ? 'Modo Editar: Arraste e solte os botões para inverter ou trocar posições, ou use o lápis/lixeira.'
+            : 'Modo Ouvir Sons: Clique nos botões para ouvir os áudios gravados no dispositivo.'}
         </span>
         <span className="font-medium text-slate-500 dark:text-slate-400">
           Hardware: ESP32-WROOM-32 + 3× ST7789 240x240 + I2S Audio

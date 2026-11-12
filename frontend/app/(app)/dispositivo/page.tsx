@@ -1378,6 +1378,42 @@ export default function Dispositivo() {
     setTemAlteracoesPendentes(true);
   };
 
+  const handleTrocarOrdemAcoes = (categoriaId: string, slotOrigem: number, slotDestino: number) => {
+    if (slotOrigem === slotDestino) return;
+    emitirSomBip(650, 0.05);
+    setCategoriasList((prev) =>
+      prev.map((c) => {
+        if (c.id !== categoriaId || !Array.isArray(c.botoes)) return c;
+        const botaoOrigem = c.botoes.find(
+          (b, idx) => (typeof b.ordem === 'number' ? b.ordem : idx) === slotOrigem
+        );
+        if (!botaoOrigem) return c;
+        const botaoDestino = c.botoes.find(
+          (b, idx) => (typeof b.ordem === 'number' ? b.ordem : idx) === slotDestino
+        );
+
+        const novosBotoes = c.botoes.map((b, idx) => {
+          const ordAtual = typeof b.ordem === 'number' ? b.ordem : idx;
+          if (b.id === botaoOrigem.id) {
+            return { ...b, ordem: slotDestino, isModificado: true };
+          }
+          if (botaoDestino && b.id === botaoDestino.id) {
+            return { ...b, ordem: slotOrigem, isModificado: true };
+          }
+          return { ...b, ordem: ordAtual };
+        });
+
+        novosBotoes.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+        return {
+          ...c,
+          botoes: novosBotoes,
+          isModificado: true,
+        };
+      })
+    );
+    setTemAlteracoesPendentes(true);
+  };
+
   const tocarAudio = async (botao: Botao) => {
     emitirSomBip(700, 0.05);
     if (botao.audio) {
@@ -1674,6 +1710,7 @@ export default function Dispositivo() {
           onClicarAcao={(botao, catId) => {
             setCategoriaAcessadaId(catId);
           }}
+          onTrocarOrdemAcoes={handleTrocarOrdemAcoes}
           modoEscuro={modoEscuro}
           altoContraste={altoContraste}
           emitirSomBip={emitirSomBip}
