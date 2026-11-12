@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Volume2, Folder, Sparkles, Check, Image as ImageIcon, Pencil } from 'lucide-react';
+import { Plus, Volume2, Folder, Sparkles, Check, Image as ImageIcon, Pencil, Trash2 } from 'lucide-react';
 
 export type BotaoSimulador = {
   id: string;
@@ -56,8 +56,10 @@ interface SimuladorDispositivoProps {
   onSelecionarCategoria: (id: string) => void;
   onAdicionarCategoria: () => void;
   onEditarCategoria?: (categoria: CategoriaSimulador) => void;
+  onExcluirCategoria?: (categoria: CategoriaSimulador) => void;
   onAdicionarAcao: (categoriaId: string) => void;
   onEditarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
+  onExcluirAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
   onClicarAcao?: (botao: BotaoSimulador, categoriaId: string) => void;
   modoEscuro?: boolean;
   altoContraste?: boolean;
@@ -70,8 +72,10 @@ export default function SimuladorDispositivo({
   onSelecionarCategoria,
   onAdicionarCategoria,
   onEditarCategoria,
+  onExcluirCategoria,
   onAdicionarAcao,
   onEditarAcao,
+  onExcluirAcao,
   onClicarAcao,
   modoEscuro = false,
   altoContraste = false,
@@ -310,21 +314,37 @@ export default function SimuladorDispositivo({
                     </div>
                   )}
 
-                  {/* APENAS O LÁPIS DE EDIÇÃO */}
-                  {onEditarCategoria && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        emitirSomBip?.(600, 0.05);
-                        onEditarCategoria(cat);
-                      }}
-                      title={`Editar categoria ${cat.nome}`}
-                      className="absolute top-1 right-1 z-20 p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
-                    >
-                      <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                    </button>
-                  )}
+                  {/* BOTÕES DE EDIÇÃO E EXCLUSÃO */}
+                  <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
+                    {onEditarCategoria && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          emitirSomBip?.(600, 0.05);
+                          onEditarCategoria(cat);
+                        }}
+                        title={`Editar categoria ${cat.nome}`}
+                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                      >
+                        <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                      </button>
+                    )}
+                    {onExcluirCategoria && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          emitirSomBip?.(600, 0.05);
+                          onExcluirCategoria(cat);
+                        }}
+                        title={`Excluir categoria ${cat.nome}`}
+                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                      >
+                        <Trash2 className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <button
@@ -418,21 +438,37 @@ export default function SimuladorDispositivo({
                     </div>
                   )}
 
-                  {/* APENAS O LÁPIS DE EDIÇÃO */}
-                  {onEditarAcao && categoriaAtiva && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        emitirSomBip?.(600, 0.05);
-                        onEditarAcao(botao, categoriaAtiva.id);
-                      }}
-                      title={`Editar ação: ${botao.rotulo}`}
-                      className="absolute top-1 right-1 z-20 p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
-                    >
-                      <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                    </button>
-                  )}
+                  {/* BOTÕES DE EDIÇÃO E EXCLUSÃO */}
+                  <div className="absolute top-1 right-1 z-20 flex items-center gap-1">
+                    {onEditarAcao && categoriaAtiva && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          emitirSomBip?.(600, 0.05);
+                          onEditarAcao(botao, categoriaAtiva.id);
+                        }}
+                        title={`Editar ação: ${botao.rotulo}`}
+                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-blue-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                      >
+                        <Pencil className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                      </button>
+                    )}
+                    {onExcluirAcao && categoriaAtiva && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          emitirSomBip?.(600, 0.05);
+                          onExcluirAcao(botao, categoriaAtiva.id);
+                        }}
+                        title={`Excluir ação: ${botao.rotulo}`}
+                        className="p-1 sm:p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-all cursor-pointer shadow-md backdrop-blur-xs"
+                      >
+                        <Trash2 className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <button

@@ -1269,6 +1269,57 @@ export default function Dispositivo() {
     }
   };
 
+  const tocarAudioCategoria = async (cat: Cat) => {
+    emitirSomBip(700, 0.05);
+    if (cat.audioArquivo) {
+      try {
+        const url = URL.createObjectURL(cat.audioArquivo);
+        tocarAudioUrl(url);
+        return;
+      } catch (err) {
+        console.warn('Erro ao reproduzir áudio local da categoria:', err);
+      }
+    }
+    if (cat.audio) {
+      try {
+        const url = normalizarMidiaUrl(cat.audio);
+        tocarAudioUrl(url);
+        return;
+      } catch (err) {
+        console.warn('Erro ao reproduzir áudio direto da categoria:', err);
+      }
+    }
+    // Tenta fallback com pré-definidos se existir pelo slug/id
+    const catIdNorm = identificarCategoriaId(cat.nome);
+    const audioPredef = catIdNorm && predefinidosData?.categorias ? predefinidosData.categorias[catIdNorm] : null;
+    if (audioPredef) {
+      const urlPredef = cat.tipo_audio === 'masculino'
+        ? (audioPredef.audioMasculino || audioPredef.audio)
+        : (audioPredef.audioFeminino || audioPredef.audio);
+      if (urlPredef) {
+        tocarAudioUrl(urlPredef);
+        return;
+      }
+    }
+    if (cat.audio_id) {
+      try {
+        const { data } = await api.get(`/midias/${cat.audio_id}/arquivo`, { responseType: 'blob' });
+        const url = URL.createObjectURL(data);
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        await audio.play();
+        return;
+      } catch (err) {
+        console.warn('Erro ao buscar áudio da categoria na API:', err);
+      }
+    }
+    setFeedback({
+      tipo: 'atencao',
+      titulo: 'Sem Áudio',
+      mensagem: `A categoria "${cat.nome}" ainda não possui áudio (${cat.tipo_audio || 'feminino'}) cadastrado.`,
+    });
+  };
+
   const categoriasFiltradas = (Array.isArray(categoriasList) ? categoriasList : []).filter((cat) =>
     (cat?.nome || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
@@ -1461,6 +1512,13 @@ export default function Dispositivo() {
             const catCompleta = categoriasList.find((c) => c.id === cat.id);
             if (catCompleta) abrirModalEditarCategoria(catCompleta);
           }}
+          onExcluirCategoria={(cat) => {
+            const catCompleta = categoriasList.find((c) => c.id === cat.id);
+            if (catCompleta) {
+              emitirSomBip(600, 0.05);
+              setCategoriaParaExcluir(catCompleta);
+            }
+          }}
           onAdicionarAcao={(catId) => {
             const cat = categoriasList.find((c) => c.id === catId);
             if (cat) abrirModalCriarAcao(cat);
@@ -1469,6 +1527,14 @@ export default function Dispositivo() {
             const cat = categoriasList.find((c) => c.id === catId);
             const b = cat?.botoes.find((item) => item.id === botao.id);
             if (b) abrirModalEditarAcao(b, catId);
+          }}
+          onExcluirAcao={(botao, catId) => {
+            const cat = categoriasList.find((c) => c.id === catId);
+            const b = cat?.botoes.find((item) => item.id === botao.id);
+            if (b && cat) {
+              emitirSomBip(600, 0.05);
+              setAcaoParaExcluir({ catId: cat.id, catNome: cat.nome, botao: b });
+            }
           }}
           onClicarAcao={(botao, catId) => {
             setCategoriaAcessadaId(catId);
@@ -1545,6 +1611,13 @@ export default function Dispositivo() {
                   
                   <div className="flex items-center gap-1.5">
                     <button 
+                      onClick={() => tocarAudioCategoria(cat)}
+                      title={`Ouvir áudio da categoria ${cat.nome}`}
+                      className={`w-8 h-8 rounded-full border ${altoContraste ? 'bg-zinc-900 text-amber-400 hover:bg-zinc-800 border-amber-500' : modoEscuro ? 'border-slate-700 bg-black text-blue-400 hover:bg-slate-900' : 'border-slate-200 bg-white text-blue-600 hover:bg-blue-50'} flex items-center justify-center transition-colors cursor-pointer shadow-xs`}
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
                       onClick={() => {
                         emitirSomBip(600, 0.05);
                         setShowEditModal(cat);
@@ -1574,7 +1647,15 @@ export default function Dispositivo() {
                 {/* INFORMAÇÕES: Ações e Tipo de Áudio */}
                 <div className="text-[11px] text-slate-400 px-1 font-medium flex items-center justify-between py-1 border-t border-b border-slate-200/60 dark:border-slate-800/60">
                   <span>Ações: <strong className={altoContraste ? 'text-amber-400' : 'text-slate-600 dark:text-slate-300'}>{cat.botoes?.length || 0}/5</strong></span>
-                  <span className="flex items-center gap-1"><Mic className="w-3 h-3" /> {cat.tipo_audio || 'feminino'}</span>
+                  <button
+                    type="button"
+                    onClick={() => tocarAudioCategoria(cat)}
+                    className="flex items-center gap-1.5 hover:text-blue-500 transition-colors cursor-pointer group"
+                    title={`Ouvir áudio da categoria ${cat.nome}`}
+                  >
+                    <Volume2 className="w-3.5 h-3.5 text-blue-500 group-hover:scale-110 transition-transform" />
+                    <span>{cat.tipo_audio || 'feminino'}</span>
+                  </button>
                 </div>
 
                 {/* BOTÃO ADICIONAR AÇÃO (SUBSTITUI O ANTIGO ACESSAR CATEGORIA & AÇÕES) */}
