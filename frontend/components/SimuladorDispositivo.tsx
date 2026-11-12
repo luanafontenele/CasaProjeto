@@ -293,18 +293,22 @@ export default function SimuladorDispositivo({
               {cat ? (
                 <div
                   onClick={() => {
-                    if (modoInteracao === 'editar' && onEditarCategoria) {
-                      emitirSomBip?.(600, 0.05);
-                      onEditarCategoria(cat);
-                    } else {
+                    emitirSomBip?.(600, 0.05);
+                    onSelecionarCategoria(cat.id);
+                    if (modoInteracao === 'acionar') {
                       tocarSomCategoria(cat);
-                      onSelecionarCategoria(cat.id);
                     }
                   }}
-                  title={cat.nome}
+                  title={
+                    modoInteracao === 'editar'
+                      ? `Categoria: ${cat.nome} (Clique para exibir no simulador ou use o lápis para editar)`
+                      : cat.nome
+                  }
                   className={`w-full h-full rounded-lg sm:rounded-xl overflow-hidden relative cursor-pointer transition-all shadow-inner group ${
                     modoInteracao === 'editar'
-                      ? 'ring-2 ring-amber-400 shadow-md hover:scale-[1.02]'
+                      ? isAtiva
+                        ? 'ring-4 ring-amber-400 shadow-lg scale-[1.02]'
+                        : 'ring-1 ring-amber-400/60 hover:ring-amber-400 hover:scale-[1.02] opacity-85 hover:opacity-100'
                       : isAtiva
                       ? 'ring-2 sm:ring-4 ring-blue-500 shadow-lg scale-[1.02]'
                       : 'hover:opacity-100 opacity-90 ring-1 ring-slate-700/60'
@@ -472,9 +476,11 @@ export default function SimuladorDispositivo({
                     setSlotSobre(null);
                   }}
                   onClick={() => {
-                    if (modoInteracao === 'editar' && onEditarAcao && categoriaAtiva) {
-                      emitirSomBip?.(600, 0.05);
-                      onEditarAcao(botao, categoriaAtiva.id);
+                    if (modoInteracao === 'editar') {
+                      emitirSomBip?.(600, 0.04);
+                      if (categoriaAtiva) {
+                        onClicarAcao?.(botao, categoriaAtiva.id);
+                      }
                     } else {
                       tocarSomBotao(botao, index);
                       if (categoriaAtiva) {
@@ -484,7 +490,7 @@ export default function SimuladorDispositivo({
                   }}
                   title={
                     modoInteracao === 'editar'
-                      ? `Botão ${index + 1}: ${botao.rotulo} (Arraste e solte sobre outro botão para trocar posições)`
+                      ? `Botão ${index + 1}: ${botao.rotulo} (Arraste para trocar de posição ou use o lápis para editar)`
                       : botao.rotulo
                   }
                   className={`w-full h-full rounded-xl sm:rounded-2xl overflow-hidden relative transition-all duration-300 ease-out shadow-md group ${
