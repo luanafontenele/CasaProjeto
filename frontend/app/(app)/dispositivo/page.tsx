@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, erroParaFeedback } from '@/lib/api';
 import { useUsuario } from '@/lib/UsuarioContext';
-import { ChevronDown, ChevronUp, X, Search, Filter, Plus, Pencil, Trash2, LayoutGrid, CheckCircle2, XCircle, AlertTriangle, FolderOpen, Volume2, Eye, Menu, Image as ImageIcon, Mic, Folder, Save } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, Search, Filter, Plus, Pencil, Trash2, LayoutGrid, CheckCircle2, XCircle, AlertTriangle, FolderOpen, Volume2, Eye, Menu, Image as ImageIcon, Mic, Folder, Save, Wifi } from 'lucide-react';
 
 import Sidebar from '@/components/Sidebar';
 import BarraTopo from '@/components/BarraTopo';
 import SimuladorDispositivo from '@/components/SimuladorDispositivo';
 import GeradorVozHumanizada from '@/components/GeradorVozHumanizada';
+import GerenciadorWifiDispositivo from '@/components/GerenciadorWifiDispositivo';
 
 type Botao = {
   id: string; 
@@ -314,7 +315,16 @@ export default function Dispositivo() {
     mensagem: string;
   }>({ tipo: null, titulo: '', mensagem: '' });
 
+  type DispositivoBasico = {
+    mac: string;
+    nome: string;
+    ssid?: string | null;
+    online?: boolean;
+    ultima_sincronizacao?: string | null;
+  };
   const [temDispositivo, setTemDispositivo] = useState<boolean | null>(null);
+  const [dispositivoPrincipal, setDispositivoPrincipal] = useState<DispositivoBasico | null>(null);
+  const [modalWifiAberto, setModalWifiAberto] = useState(false);
   const [modoDesenvolvedor, setModoDesenvolvedor] = useState(false);
   const [versao, setVersao] = useState(0);
   const carregar = () => setVersao((v) => v + 1);
@@ -323,14 +333,19 @@ export default function Dispositivo() {
   useEffect(() => {
     let ativo = true;
     api
-      .get<unknown[]>('/dispositivos')
+      .get<DispositivoBasico[]>('/dispositivos')
       .then((res) => {
         if (ativo) {
-          setTemDispositivo(Array.isArray(res.data) && res.data.length > 0);
+          const lista = Array.isArray(res.data) ? res.data : [];
+          setTemDispositivo(lista.length > 0);
+          setDispositivoPrincipal(lista[0] || null);
         }
       })
       .catch(() => {
-        if (ativo) setTemDispositivo(false);
+        if (ativo) {
+          setTemDispositivo(false);
+          setDispositivoPrincipal(null);
+        }
       });
     return () => {
       ativo = false;
@@ -1620,14 +1635,95 @@ export default function Dispositivo() {
               </div>
             )}
             <section 
-              className="w-full h-24 sm:h-32 rounded-3xl p-6 sm:p-8 flex items-center justify-center text-white shadow-lg relative overflow-hidden text-center shrink-0"
-              style={{
-                background: altoContraste ? '#000000' : 'linear-gradient(90deg, #F5AC46 0%, #6586F3 52%, #4D66B8 88%, #3B4E8D 100%)',
-                border: altoContraste ? '2px solid #FACC15' : 'none'
-              }}
+              className={`w-full h-24 sm:h-28 rounded-3xl p-6 sm:p-8 flex items-center justify-center text-white shadow-md text-center shrink-0 ${
+                altoContraste ? 'bg-black border-2 border-amber-400 text-amber-300' : modoEscuro ? 'bg-slate-900 border border-slate-800' : 'bg-[#5F7DE3]'
+              }`}
             >
-              <h1 className="text-2xl sm:text-3xl font-extrabold drop-shadow-sm">Configurar seu dispositivo</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold">Configurar seu dispositivo</h1>
             </section>
+
+        {/* CARD REDES WI-FI DO APARELHO (FIRMWARE V11/V12) */}
+        {temDispositivo === true && dispositivoPrincipal && (
+          <div
+            className={`w-full p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs ${
+              altoContraste
+                ? 'bg-zinc-900 border-amber-500 text-amber-300'
+                : modoEscuro
+                ? 'bg-slate-900 border-slate-800 text-slate-200'
+                : 'bg-white border-slate-200 text-slate-800'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  altoContraste ? 'bg-amber-400 text-black' : 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400'
+                }`}
+              >
+                <Wifi className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Redes Wi-Fi do Aparelho</span>
+                <span className="text-sm font-semibold">
+                  {dispositivoPrincipal.nome} —{' '}
+                  <span className="text-slate-500 font-normal">
+                    {dispositivoPrincipal.ssid ? `Conectado a "${dispositivoPrincipal.ssid}"` : 'Sem rede informada'}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                emitirSomBip(650, 0.05);
+                setModalWifiAberto(true);
+              }}
+              className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
+                altoContraste
+                  ? 'bg-amber-400 text-black hover:bg-amber-500'
+                  : 'bg-[#5F7DE3] hover:bg-[#4D66B8] text-white'
+              }`}
+            >
+              <Wifi className="w-4 h-4" /> Configurar Wi-Fi
+            </button>
+          </div>
+        )}
+
+        {/* MODAL GERENCIAR WI-FI DO DISPOSITIVO */}
+        {modalWifiAberto && dispositivoPrincipal && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div
+              className={`w-full max-w-lg rounded-3xl p-6 shadow-2xl border relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto ${
+                altoContraste
+                  ? 'bg-black border-amber-500 text-amber-300'
+                  : modoEscuro
+                  ? 'bg-slate-900 border-slate-800 text-slate-100'
+                  : 'bg-white border-slate-100 text-slate-800'
+              }`}
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Wifi className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-base font-bold">Gerenciar Redes Wi-Fi</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalWifiAberto(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <GerenciadorWifiDispositivo
+                mac={dispositivoPrincipal.mac}
+                modoEscuro={modoEscuro}
+                altoContraste={altoContraste}
+                emitirSomBip={emitirSomBip}
+              />
+            </div>
+          </div>
+        )}
 
         {/* AVISO FIXO */}
         <div className={`w-full p-4 rounded-2xl border text-xs leading-relaxed text-justify shadow-xs ${altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-900/80 border-slate-800 text-slate-300' : 'bg-blue-50/70 border-blue-100 text-blue-900'}`}>

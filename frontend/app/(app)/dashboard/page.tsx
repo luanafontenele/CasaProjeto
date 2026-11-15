@@ -28,6 +28,7 @@ import Link from 'next/link';
 import Sidebar from '@/components/Sidebar';
 import BarraTopo from '@/components/BarraTopo';
 import GerenciadorWifiDispositivo from '@/components/GerenciadorWifiDispositivo';
+import { isDispositivoOnline } from '@/lib/tempo';
 
 type Dispositivo = {
   mac: string;
@@ -78,9 +79,10 @@ export default function Dashboard() {
   const [detalheMac, setDetalheMac] = useState<string | null>(null);
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
-  // Wizard de Pareamento Firmware v7 (3 Passos)
+  // Wizard de Pareamento Firmware v7+ / v11 / v12 (3 Passos)
   const [showPareamento, setShowPareamento] = useState(false);
   const [passoPareamento, setPassoPareamento] = useState<1 | 2 | 3>(1);
+  const [btPin, setBtPin] = useState('');
   const [btSsid, setBtSsid] = useState('');
   const [btPass, setBtPass] = useState('');
   const [btStatus, setBtStatus] = useState<'idle' | 'conectando' | 'enviando' | 'sucesso' | 'erro'>('idle');
@@ -90,6 +92,11 @@ export default function Dashboard() {
   const [codigoPareamento, setCodigoPareamento] = useState('');
   const [novoNome, setNovoNome] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [redesReservasPareamento, setRedesReservasPareamento] = useState<{ ssid: string; senha: string; aberta: boolean }[]>([]);
+  const [mostrarReservasPareamento, setMostrarReservasPareamento] = useState(false);
+  const [novaReservaSsid, setNovaReservaSsid] = useState('');
+  const [novaReservaSenha, setNovaReservaSenha] = useState('');
+  const [novaReservaAberta, setNovaReservaAberta] = useState(false);
 
   // Ajustes em tempo real do dispositivo selecionado
   const [volumeEdicao, setVolumeEdicao] = useState<number>(70);
@@ -209,8 +216,13 @@ export default function Dashboard() {
 
   // Envio de credenciais Wi-Fi pelo Web Bluetooth com geração de chave AES-256 (Passo 2)
   const handleEnviarWifiBluetooth = async () => {
+    const pinLimpo = btPin.replace(/\D/g, '').slice(0, 6);
+    if (!reconfigurandoMac && pinLimpo.length !== 6) {
+      setFeedback({ tipo: 'erro', titulo: 'PIN Obrigatório', mensagem: 'Digite os 6 números do PIN exibido no visor OLED do aparelho.' });
+      return;
+    }
     if (!btSsid.trim()) {
-      setFeedback({ tipo: 'erro', titulo: 'SSID Obrigatório', mensagem: 'Informe o nome da rede Wi-Fi.' });
+      setFeedback({ tipo: 'erro', titulo: 'SSID Obrigatório', mensagem: 'Informe o nome da rede Wi-Fi principal.' });
       return;
     }
     const navBt = (navigator as unknown as { bluetooth?: { requestDevice: (opt: unknown) => Promise<unknown> } }).bluetooth;
@@ -235,6 +247,7 @@ export default function Dashboard() {
       setChaveWifiGerada(keyB64);
 
       interface BluetoothRemoteGATTCharacteristic {
+        readValue?(): Promise<DataView>;
         writeValue(data: BufferSource): Promise<void>;
         writeValueWithResponse?(data: BufferSource): Promise<void>;
       }
@@ -249,9 +262,9 @@ export default function Dashboard() {
         gatt?: BluetoothRemoteGATTServer;
       }
 
-      // Filtro com prefixo "CASA-" e serviço GATT
+      // Filtro com prefixo "CASA" e serviço GATT
       const device = (await navBt.requestDevice({
-        filters: [{ namePrefix: 'CASA-' }],
+        filters: [{ namePrefix: 'CASA' }],
         optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b'],
       })) as BluetoothDevice;
 
@@ -267,7 +280,9 @@ export default function Dashboard() {
       setBtStatus('enviando');
       setBtMensagem('Enviando Wi-Fi e chave de segurança...');
 
+      // Formatação estrita exigida pelo firmware v11/v12: pin como string com aspas
       const payload = JSON.stringify({
+        pin: pinLimpo,
         ssid: btSsid.trim(),
         pass: btPass,
         key: keyB64,
@@ -286,9 +301,38 @@ export default function Dashboard() {
         }
       }
 
+      // Tenta ler característica de status do Firmware v11/v12 (beb5483e-36e1-4688-b7f5-ea07361b26aa)
+      try {
+        await new Promise((r) => setTimeout(r, 600));
+        const statusChar = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26aa');
+        if (statusChar && statusChar.readValue) {
+          const val = await statusChar.readValue();
+          const decoder = new TextDecoder();
+          const statusStr = decoder.decode(val).trim();
+          if (statusStr === 'pin_errado') {
+            throw new Error('PIN incorreto! Verifique os 6 dígitos exibidos na tela do aparelho.');
+          } else if (statusStr === 'bloqueado') {
+            throw new Error('Aparelho temporariamente bloqueado por tentativas incorretas. Aguarde 10 segundos.');
+          } else if (statusStr === 'dados_invalidos') {
+            throw new Error('Dados de Wi-Fi inválidos.');
+          } else if (statusStr === 'chave_invalida') {
+            throw new Error('Chave de segurança AES inválida.');
+          }
+        }
+      } catch (errStatus) {
+        if (errStatus instanceof Error && (errStatus.message.includes('PIN') || errStatus.message.includes('bloqueado'))) {
+          throw errStatus;
+        }
+      }
+
       setBtStatus('sucesso');
-      setBtMensagem('Wi-Fi e chave configurados! O aparelho está reiniciando.');
+      setBtMensagem('Wi-Fi e chave configurados! O aparelho está reiniciando para conectar.');
       emitirSomBip(800, 0.1);
+
+      // Preenche o código de pareamento no passo 3 com o mesmo PIN do OLED
+      if (pinLimpo) {
+        setCodigoPareamento(pinLimpo);
+      }
 
       // Se estiver apenas reconfigurando a chave de um aparelho já vinculado:
       if (reconfigurandoMac) {
@@ -339,20 +383,34 @@ export default function Dashboard() {
 
     setEnviando(true);
     try {
-      const payload: { codigo: string; nome?: string; chave_wifi?: string } = {
+      const payload: {
+        codigo: string;
+        nome?: string;
+        chave_wifi?: string;
+        redes_reservas?: { ssid: string; senha?: string; aberta?: boolean }[];
+      } = {
         codigo: cod,
         nome: novoNome.trim() || undefined,
       };
       if (chaveWifiGerada) {
         payload.chave_wifi = chaveWifiGerada;
       }
+      if (redesReservasPareamento.length > 0) {
+        payload.redes_reservas = redesReservasPareamento.map((r) => ({
+          ssid: r.ssid.trim(),
+          senha: r.aberta ? undefined : r.senha,
+          aberta: r.aberta,
+        }));
+      }
 
-      const { data } = await api.post<Dispositivo>('/dispositivos/parear', payload);
+      await api.post<Dispositivo>('/dispositivos/parear', payload);
 
       setShowPareamento(false);
       setCodigoPareamento('');
+      setBtPin('');
       setNovoNome('');
       setChaveWifiGerada('');
+      setRedesReservasPareamento([]);
       setPassoPareamento(1);
       setBtStatus('idle');
       setBtMensagem('');
@@ -524,11 +582,11 @@ export default function Dashboard() {
                         altoContraste ? 'text-amber-300' : modoEscuro ? 'text-slate-200' : 'text-slate-700'
                       } font-bold`}
                     >
-                      <span className={`w-2.5 h-2.5 rounded-full ${disp?.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${isDispositivoOnline(disp) ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
                       {disp?.nome}
                     </div>
                     <span className="text-[0.8em] text-slate-400">
-                      {disp?.online ? 'Conectado e Operacional' : 'Sem comunicação recente'}
+                      {isDispositivoOnline(disp) ? 'Conectado e Operacional' : 'Sem comunicação recente'}
                     </span>
                   </div>
 
@@ -718,7 +776,7 @@ export default function Dashboard() {
                     } border rounded-2xl p-3.5 flex items-center justify-between shadow-xs`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className={`w-3 h-3 rounded-full shadow-xs shrink-0 ${d.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                      <span className={`w-3 h-3 rounded-full shadow-xs shrink-0 ${isDispositivoOnline(d) ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
                       <div className="flex flex-col text-left min-w-0">
                         <span
                           className={`text-[1em] font-semibold ${
@@ -829,9 +887,9 @@ export default function Dashboard() {
               </div>
               <div className="flex flex-col text-left">
                 <h3 className="text-lg font-bold">{det.nome}</h3>
-                <span className={`text-[0.9em] font-semibold flex items-center gap-1.5 ${det.online ? 'text-emerald-500' : 'text-slate-400'}`}>
-                  <span className={`w-2 h-2 rounded-full ${det.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                  {det.online ? 'Conectado e Ativo' : 'Sem comunicação recente'}
+                <span className={`text-[0.9em] font-semibold flex items-center gap-1.5 ${isDispositivoOnline(det) ? 'text-emerald-500' : 'text-slate-400'}`}>
+                  <span className={`w-2 h-2 rounded-full ${isDispositivoOnline(det) ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                  {isDispositivoOnline(det) ? 'Conectado e Ativo' : 'Sem comunicação recente'}
                 </span>
               </div>
             </div>
@@ -1035,7 +1093,7 @@ export default function Dashboard() {
               <div className="flex flex-col gap-4">
                 <div className="text-center space-y-1">
                   <p className="text-[0.85em] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Informe a rede e senha que o aparelho usará. A chave AES-256 de segurança será gerada e enviada via BLE.
+                    Informe o PIN exibido no OLED e a rede Wi-Fi. A chave AES-256 será enviada via BLE conforme o Firmware v11/v12.
                   </p>
                   <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
                     Aviso: Somente redes Wi-Fi de 2,4 GHz são suportadas.
@@ -1043,25 +1101,136 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex flex-col gap-3">
-                  <input
-                    value={btSsid}
-                    maxLength={32}
-                    onChange={(e) => setBtSsid(e.target.value)}
-                    placeholder="Nome da rede Wi-Fi (SSID)"
-                    className={`w-full ${
-                      altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
-                    } border rounded-2xl px-4 py-3 text-[0.9em] focus:outline-none`}
-                  />
-                  <input
-                    type="password"
-                    value={btPass}
-                    maxLength={63}
-                    onChange={(e) => setBtPass(e.target.value)}
-                    placeholder="Senha do Wi-Fi"
-                    className={`w-full ${
-                      altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
-                    } border rounded-2xl px-4 py-3 text-[0.9em] focus:outline-none`}
-                  />
+                  {!reconfigurandoMac && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                        PIN de 6 dígitos do visor OLED:
+                      </label>
+                      <input
+                        value={btPin}
+                        maxLength={6}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        onChange={(e) => setBtPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="Ex: 012345"
+                        className={`w-full font-mono text-center tracking-[0.3em] font-bold ${
+                          altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
+                        } border rounded-2xl px-4 py-2.5 text-[1em] focus:outline-none`}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                      Rede Wi-Fi Principal (SSID):
+                    </label>
+                    <input
+                      value={btSsid}
+                      maxLength={32}
+                      onChange={(e) => setBtSsid(e.target.value)}
+                      placeholder="Nome da rede principal"
+                      className={`w-full ${
+                        altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      } border rounded-2xl px-4 py-2.5 text-[0.9em] focus:outline-none`}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                      Senha do Wi-Fi:
+                    </label>
+                    <input
+                      type="password"
+                      value={btPass}
+                      maxLength={63}
+                      onChange={(e) => setBtPass(e.target.value)}
+                      placeholder="Senha da rede (deixe em branco se aberta)"
+                      className={`w-full ${
+                        altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-300' : modoEscuro ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'
+                      } border rounded-2xl px-4 py-2.5 text-[0.9em] focus:outline-none`}
+                    />
+                  </div>
+
+                  {/* SEÇÃO EXPANSÍVEL: REDES RESERVAS OPCIONAIS (FIRMWARE V11/V12) */}
+                  {!reconfigurandoMac && (
+                    <div className="border-t border-slate-200 dark:border-slate-800 pt-2 flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMostrarReservasPareamento((v) => !v)}
+                        className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-between py-1 cursor-pointer"
+                      >
+                        <span>Redes Reservas de Contingência ({redesReservasPareamento.length}/4)</span>
+                        <span>{mostrarReservasPareamento ? '▲ Recolher' : '▼ Expandir'}</span>
+                      </button>
+
+                      {mostrarReservasPareamento && (
+                        <div className="flex flex-col gap-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                          {redesReservasPareamento.map((r, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                              <span className="font-semibold truncate max-w-[200px]">{r.ssid} {r.aberta ? '(Aberta)' : ''}</span>
+                              <button
+                                type="button"
+                                onClick={() => setRedesReservasPareamento((l) => l.filter((_, i) => i !== idx))}
+                                className="text-rose-500 hover:text-rose-700 p-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          {redesReservasPareamento.length < 4 && (
+                            <div className="flex flex-col gap-1.5 pt-1">
+                              <div className="flex gap-2">
+                                <input
+                                  value={novaReservaSsid}
+                                  maxLength={32}
+                                  onChange={(e) => setNovaReservaSsid(e.target.value)}
+                                  placeholder="SSID reserva"
+                                  className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                                />
+                                <input
+                                  type="password"
+                                  disabled={novaReservaAberta}
+                                  value={novaReservaSenha}
+                                  maxLength={63}
+                                  onChange={(e) => setNovaReservaSenha(e.target.value)}
+                                  placeholder={novaReservaAberta ? 'Aberta' : 'Senha'}
+                                  className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 disabled:opacity-50"
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={novaReservaAberta}
+                                    onChange={(e) => setNovaReservaAberta(e.target.checked)}
+                                    className="rounded border-slate-300"
+                                  />
+                                  Rede aberta
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!novaReservaSsid.trim()) return;
+                                    setRedesReservasPareamento((l) => [
+                                      ...l,
+                                      { ssid: novaReservaSsid.trim(), senha: novaReservaSenha, aberta: novaReservaAberta },
+                                    ]);
+                                    setNovaReservaSsid('');
+                                    setNovaReservaSenha('');
+                                    setNovaReservaAberta(false);
+                                  }}
+                                  className="px-3 py-1 rounded-xl bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 cursor-pointer"
+                                >
+                                  + Adicionar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {btStatus !== 'idle' && (

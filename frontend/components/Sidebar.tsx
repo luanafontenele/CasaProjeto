@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { BarChart2, ChevronDown, Grid, History, Home, LogOut, Settings, User } from 'lucide-react';
+import { BarChart2, ChevronDown, Cpu, History, Home, LogOut, Settings, User } from 'lucide-react';
 import { sair } from '@/lib/auth';
 import { useUsuario } from '@/lib/UsuarioContext';
 
@@ -17,7 +17,7 @@ interface SidebarProps {
 
 const ITENS = [
   { chave: 'dashboard', href: '/dashboard', rotulo: 'Início', Icone: Home },
-  { chave: 'dispositivo', href: '/dispositivo', rotulo: 'Dispositivo', Icone: Grid },
+  { chave: 'dispositivo', href: '/dispositivo', rotulo: 'Dispositivo', Icone: Cpu },
   { chave: 'desempenho', href: '/desempenho', rotulo: 'Desempenho', Icone: BarChart2 },
   { chave: 'historico', href: '/historico', rotulo: 'Histórico', Icone: History },
   // Adicione a linha abaixo quando for criar a página de perfil
