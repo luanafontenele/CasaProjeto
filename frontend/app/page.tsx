@@ -14,7 +14,9 @@ import {
   HeartHandshake, 
   Sparkles,
   ArrowRight,
-  Download
+  Download,
+  ShieldCheck,
+  Layers
 } from 'lucide-react';
 
 export default function Home() {
@@ -190,36 +192,149 @@ export default function Home() {
 
       <main className="flex-1 max-w-6xl 2xl:max-w-7xl w-full mx-auto px-6 py-4 flex flex-col gap-16">
 
-        {/* BANNER HERO (Escalado puramente em viewport height para 2K, 1080p e mobile) */}
+        {/* BANNER HERO INTRODUTÓRIO MULTIDIMENSIONAL (Gradiente do projeto mesclado com o vídeo ambiente e showcase interativo) */}
         <section 
           id="hero"
-          className="w-full h-[78vh] min-h-[460px] rounded-3xl flex flex-col items-center justify-center text-center p-6 sm:p-12 2xl:p-20 shadow-xl shadow-blue-500/5 relative overflow-hidden backdrop-blur-md border border-white/30 scroll-mt-28"
+          className="w-full min-h-[640px] lg:h-[84vh] lg:min-h-[600px] rounded-3xl p-6 sm:p-10 lg:p-12 2xl:p-16 shadow-2xl relative overflow-hidden border border-white/25 scroll-mt-28 flex items-center"
           style={{
-            background: 'linear-gradient(135deg, rgba(245, 172, 70, 0.78) 0%, rgba(101, 134, 243, 0.82) 48%, rgba(77, 102, 184, 0.85) 82%, rgba(59, 78, 141, 0.88) 100%)'
+            background: 'linear-gradient(135deg, rgba(245, 172, 70, 0.88) 0%, rgba(101, 134, 243, 0.90) 45%, rgba(77, 102, 184, 0.92) 80%, rgba(59, 78, 141, 0.95) 100%)'
           }}
         >
-          <div className="text-center text-white z-10 max-w-3xl 2xl:max-w-5xl flex flex-col items-center gap-5 2xl:gap-8">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl 2xl:text-7xl font-extrabold tracking-tight text-white drop-shadow-sm leading-tight animate-in fade-in duration-700">
-              Projeto C.A.S.A.
-            </h1>
-            <p className="text-white/95 font-medium text-base sm:text-lg md:text-xl 2xl:text-2xl leading-relaxed max-w-2xl 2xl:max-w-4xl drop-shadow-xs px-2 animate-in fade-in duration-700 delay-150">
-              Comunicação Alternativa para Suporte a Autistas: Tecnologia assistiva e IoT promovendo a autonomia e a inclusão comunicacional.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 mt-2 animate-in fade-in duration-700 delay-300">
-              <a
-                href="#sobre"
-                className="px-6 py-3.5 bg-white text-slate-900 hover:bg-slate-100 hover:-translate-y-1 hover:shadow-xl active:translate-y-0 active:scale-[0.98] font-bold text-sm sm:text-base rounded-xl transition-all duration-200 shadow-md cursor-pointer min-h-[44px] flex items-center"
-              >
-                Conhecer o Projeto
-              </a>
-              <Link
-                href="/login"
-                className="group px-6 py-3.5 bg-black/20 hover:bg-black/35 hover:border-white/50 hover:-translate-y-1 hover:shadow-xl active:translate-y-0 active:scale-[0.98] backdrop-blur-xs text-white border border-white/30 font-semibold text-sm sm:text-base rounded-xl transition-all duration-200 shadow-md cursor-pointer min-h-[44px] flex items-center gap-2"
-              >
-                <span>Acessar Plataforma</span>
-                <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-1.5 transition-transform duration-200" />
-              </Link>
+          {/* Vídeo ambiente mesclado ao fundo gradiente */}
+          <video
+            src="/ad.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-35 scale-105 pointer-events-none filter blur-[1px]"
+          />
+
+          {/* Camada de profundidade e vinheta suave para realçar legibilidade */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-black/20 pointer-events-none" />
+
+          {/* Conteúdo em Grid Introdutório */}
+          <div className="relative z-10 w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            
+            {/* Coluna Esquerda: Texto e Ações (5 colunas) */}
+            <div className="lg:col-span-5 flex flex-col items-start text-left gap-6 text-white">
+              <div className="flex flex-col gap-3">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl 2xl:text-7xl font-extrabold tracking-tight text-white drop-shadow-md leading-[1.1]">
+                  Projeto C.A.S.A.
+                </h1>
+                <p className="text-white font-semibold text-lg sm:text-xl lg:text-2xl drop-shadow-sm">
+                  Comunicação Alternativa para Suporte a Autistas
+                </p>
+                <p className="text-white/90 text-sm sm:text-base lg:text-lg leading-relaxed max-w-xl font-normal drop-shadow-xs">
+                  Tecnologia assistiva unindo hardware físico sensorial com displays TFT dinâmicos, síntese vocal humanizada e gestão em nuvem para promover a inclusão e autonomia de pessoas no espectro autista.
+                </p>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 pt-2">
+                <Link
+                  href="/login"
+                  className="group px-6 py-3.5 bg-white text-slate-900 hover:bg-slate-100 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:scale-[0.98] font-bold text-sm sm:text-base rounded-xl transition-all duration-200 shadow-lg cursor-pointer min-h-[46px] flex items-center gap-2"
+                >
+                  <span>Acessar Plataforma</span>
+                  <ArrowRight className="w-4 h-4 text-slate-900 group-hover:translate-x-1 transition-transform duration-200" />
+                </Link>
+
+                <a
+                  href="#sobre"
+                  className="px-6 py-3.5 bg-black/25 hover:bg-black/40 hover:border-white/50 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:scale-[0.98] backdrop-blur-md text-white border border-white/30 font-semibold text-sm sm:text-base rounded-xl transition-all duration-200 shadow-md cursor-pointer min-h-[46px] flex items-center"
+                >
+                  Conhecer o Projeto
+                </a>
+              </div>
             </div>
+
+            {/* Coluna Direita: Dispositivo com Funções Conectadas ao Redor (7 colunas) */}
+            <div className="lg:col-span-7 w-full flex flex-col items-center justify-center relative">
+              
+              {/* Palco do Dispositivo e Chamadas Flutuantes (proporções 1:1 sincronizadas com a imagem) */}
+              <div className="relative w-full max-w-[430px] xl:max-w-[470px] mx-auto lg:-translate-x-10 xl:-translate-x-14 py-4 flex items-center justify-center animate-float">
+
+                {/* Imagem Central do Dispositivo */}
+                <div className="relative w-full">
+                  <Image
+                    src="/hero-flutuando.png"
+                    alt="Dispositivo Físico do Projeto C.A.S.A."
+                    width={1818}
+                    height={1408}
+                    unoptimized
+                    className="w-full h-auto object-contain drop-shadow-[0_25px_40px_rgba(0,0,0,0.55)] select-none pointer-events-none"
+                    priority
+                  />
+
+
+                  {/* Card 1: Hardware IoT (Posicionado próximo ao topo-esquerdo) */}
+                  <div className="hidden lg:flex absolute -top-4 -left-10 lg:-left-14 xl:-left-18 z-30 bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-xl border border-amber-400/40 hover:border-amber-400/70 rounded-2xl p-2.5 sm:p-3 flex-col gap-0.5 shadow-2xl transition-all duration-300 w-[215px] group">
+                    <div className="flex items-center gap-2 text-white font-semibold text-xs">
+                      <div className="w-5 h-5 rounded-md bg-amber-400/20 text-amber-300 flex items-center justify-center shrink-0">
+                        <Cpu className="w-3 h-3" />
+                      </div>
+                      <span>Hardware IoT</span>
+                    </div>
+                    <span className="text-[11px] text-white/80 leading-snug">Displays ST7789, OLED e botões táteis dedicados</span>
+                  </div>
+
+                  {/* Card 2: Método PECS (Posicionado próximo à lateral direita) */}
+                  <div className="hidden lg:flex absolute top-[18%] -right-24 sm:-right-28 xl:-right-32 z-30 bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-xl border border-sky-400/40 hover:border-sky-400/70 rounded-2xl p-2.5 sm:p-3 flex-col gap-0.5 shadow-2xl transition-all duration-300 w-[215px] group">
+                    <div className="flex items-center gap-2 text-white font-semibold text-xs">
+                      <div className="w-5 h-5 rounded-md bg-sky-400/20 text-sky-200 flex items-center justify-center shrink-0">
+                        <Layers className="w-3 h-3" />
+                      </div>
+                      <span>Método PECS</span>
+                    </div>
+                    <span className="text-[11px] text-white/80 leading-snug">Pranchas personalizáveis sincronizadas em nuvem</span>
+                  </div>
+
+                  {/* Card 3: Segurança BLE (Posicionado próximo à base esquerda) */}
+                  <div className="hidden lg:flex absolute -bottom-7 sm:-bottom-8 left-[2%] sm:left-[4%] z-30 bg-slate-900/70 hover:bg-slate-900/85 backdrop-blur-xl border border-emerald-400/40 hover:border-emerald-400/70 rounded-2xl p-2.5 sm:p-3 flex-col gap-0.5 shadow-2xl transition-all duration-300 w-[215px] group">
+                    <div className="flex items-center gap-2 text-white font-semibold text-xs">
+                      <div className="w-5 h-5 rounded-md bg-emerald-400/20 text-emerald-300 flex items-center justify-center shrink-0">
+                        <ShieldCheck className="w-3 h-3" />
+                      </div>
+                      <span>Segurança BLE</span>
+                    </div>
+                    <span className="text-[11px] text-white/80 leading-snug">Criptografia AES-256 no pareamento e Wi-Fi</span>
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* Versão adaptativa para Mobile / Telas Menores (< lg) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full pt-4 lg:hidden">
+                <div className="bg-slate-900/70 backdrop-blur-md border border-white/20 rounded-2xl p-3 flex flex-col gap-1 shadow-lg">
+                  <div className="flex items-center gap-2 text-white font-semibold text-xs">
+                    <Cpu className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span>Hardware IoT</span>
+                  </div>
+                  <span className="text-xs text-white/80 leading-snug">Displays ST7789, OLED e botões táteis dedicados</span>
+                </div>
+
+                <div className="bg-slate-900/70 backdrop-blur-md border border-white/20 rounded-2xl p-3 flex flex-col gap-1 shadow-lg">
+                  <div className="flex items-center gap-2 text-white font-semibold text-xs">
+                    <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+                    <span>Segurança BLE</span>
+                  </div>
+                  <span className="text-xs text-white/80 leading-snug">Criptografia AES-256 no pareamento e Wi-Fi</span>
+                </div>
+
+                <div className="bg-slate-900/70 backdrop-blur-md border border-white/20 rounded-2xl p-3 flex flex-col gap-1 shadow-lg">
+                  <div className="flex items-center gap-2 text-white font-semibold text-xs">
+                    <Layers className="w-4 h-4 text-sky-200 shrink-0" />
+                    <span>Método PECS</span>
+                  </div>
+                  <span className="text-xs text-white/80 leading-snug">Pranchas personalizáveis sincronizadas em nuvem</span>
+                </div>
+              </div>
+
+            </div>
+
           </div>
         </section>
 

@@ -27,3 +27,17 @@ input::-ms-reveal,
 input::-ms-clear {
   display: none !important;
 }
+
+/* Animação suave de flutuação para o dispositivo no Hero */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
