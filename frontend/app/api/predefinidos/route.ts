@@ -27,7 +27,7 @@ function encontrarArquivo(diretorios: string[], slugs: string[], extensoes: stri
           const match = arquivos.find((arq) => {
             const semExt = path.parse(arq).name;
             const arqExt = path.parse(arq).ext.toLowerCase();
-            return (normalizar(semExt) === slugNorm || semExt.toLowerCase() === slug.toLowerCase()) && extensoes.includes(arqExt);
+            return (normalizar(semExt) === slugNorm || semExt.toLowerCase() === slug.toLowerCase()) && arqExt === ext;
           });
 
           if (match) {
