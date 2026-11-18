@@ -48,6 +48,26 @@ type Dispositivo = {
   ultima_sincronizacao: string | null;
 };
 
+interface BluetoothRemoteGATTCharacteristic {
+  readValue?(): Promise<DataView>;
+  writeValue(data: BufferSource): Promise<void>;
+  writeValueWithResponse?(data: BufferSource): Promise<void>;
+}
+interface BluetoothRemoteGATTService {
+  getCharacteristic(characteristic: string): Promise<BluetoothRemoteGATTCharacteristic>;
+}
+interface BluetoothRemoteGATTServer {
+  connected?: boolean;
+  connect(): Promise<BluetoothRemoteGATTServer>;
+  disconnect(): void;
+  getPrimaryService(service: string): Promise<BluetoothRemoteGATTService>;
+}
+interface BluetoothDevice {
+  id?: string;
+  name?: string;
+  gatt?: BluetoothRemoteGATTServer;
+}
+
 type ItemHistorico = {
   id: string;
   nome: string;
@@ -82,6 +102,9 @@ export default function Dashboard() {
   // Wizard de Pareamento Firmware v7+ / v11 / v12 (3 Passos)
   const [showPareamento, setShowPareamento] = useState(false);
   const [passoPareamento, setPassoPareamento] = useState<1 | 2 | 3>(1);
+  const [btDevice, setBtDevice] = useState<BluetoothDevice | null>(null);
+  const [btChar, setBtChar] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
+  const [btStatusChar, setBtStatusChar] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [btPin, setBtPin] = useState('');
   const [btSsid, setBtSsid] = useState('');
   const [btPass, setBtPass] = useState('');
@@ -146,7 +169,10 @@ export default function Dashboard() {
         api.get<Dispositivo[]>('/dispositivos'),
         api.get('/historico', { params: { periodo: 'semana' } }),
       ]);
-      setDispositivos(d.data);
+      const listaLimpa = (Array.isArray(d.data) ? d.data : []).filter(
+        (disp) => disp && disp.mac && disp.mac !== 'DEV-MODE' && !disp.nome?.toLowerCase().includes('desenvolvedor')
+      );
+      setDispositivos(listaLimpa);
       setMais(h.data.mais_acionados || []);
       setMenos(h.data.menos_acionados || []);
     } catch (err) {
@@ -198,8 +224,17 @@ export default function Dashboard() {
     const item = itemParaExcluir;
     setItemParaExcluir(null);
     if (!item) return;
+    const macId = item.mac || (item as unknown as { id?: string }).id || '';
+    if (!macId) {
+      setFeedback({
+        tipo: 'erro',
+        titulo: 'Erro ao Desconectar',
+        mensagem: 'Identificador do dispositivo não encontrado.',
+      });
+      return;
+    }
     try {
-      await api.delete(`/dispositivos/${encodeURIComponent(item.mac)}`);
+      await api.delete(`/dispositivos/${encodeURIComponent(macId)}`);
       setShowDevicesModal(false);
       setShowDeviceDetails(false);
       await carregar();
@@ -207,24 +242,15 @@ export default function Dashboard() {
       setFeedback({
         tipo: 'sucesso',
         titulo: 'Dispositivo Removido',
-        mensagem: `O dispositivo "${item.nome}" foi desconectado com sucesso! O aparelho voltará a pedir um novo código.`,
+        mensagem: `O dispositivo "${item.nome}" foi desconectado com sucesso!`,
       });
     } catch (err) {
       setFeedback(erroParaFeedback(err));
     }
   };
 
-  // Envio de credenciais Wi-Fi pelo Web Bluetooth com geração de chave AES-256 (Passo 2)
-  const handleEnviarWifiBluetooth = async () => {
-    const pinLimpo = btPin.replace(/\D/g, '').slice(0, 6);
-    if (!reconfigurandoMac && pinLimpo.length !== 6) {
-      setFeedback({ tipo: 'erro', titulo: 'PIN Obrigatório', mensagem: 'Digite os 6 números do PIN exibido no visor OLED do aparelho.' });
-      return;
-    }
-    if (!btSsid.trim()) {
-      setFeedback({ tipo: 'erro', titulo: 'SSID Obrigatório', mensagem: 'Informe o nome da rede Wi-Fi principal.' });
-      return;
-    }
+  // 1ª ETAPA: Conexão direta via Web Bluetooth para habilitar a visualização do PIN no OLED
+  const handleConectarBluetooth = async () => {
     const navBt = (navigator as unknown as { bluetooth?: { requestDevice: (opt: unknown) => Promise<unknown> } }).bluetooth;
     if (!navBt) {
       setFeedback({
@@ -246,23 +272,6 @@ export default function Dashboard() {
       const keyB64 = btoa(binary);
       setChaveWifiGerada(keyB64);
 
-      interface BluetoothRemoteGATTCharacteristic {
-        readValue?(): Promise<DataView>;
-        writeValue(data: BufferSource): Promise<void>;
-        writeValueWithResponse?(data: BufferSource): Promise<void>;
-      }
-      interface BluetoothRemoteGATTService {
-        getCharacteristic(characteristic: string): Promise<BluetoothRemoteGATTCharacteristic>;
-      }
-      interface BluetoothRemoteGATTServer {
-        connect(): Promise<BluetoothRemoteGATTServer>;
-        getPrimaryService(service: string): Promise<BluetoothRemoteGATTService>;
-      }
-      interface BluetoothDevice {
-        gatt?: BluetoothRemoteGATTServer;
-      }
-
-      // Filtro com prefixo "CASA" e serviço GATT
       const device = (await navBt.requestDevice({
         filters: [{ namePrefix: 'CASA' }],
         optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b'],
@@ -277,15 +286,87 @@ export default function Dashboard() {
       const service = await server.getPrimaryService('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
       const characteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8');
 
+      let statusCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
+      try {
+        statusCharacteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26aa');
+      } catch {
+        // Característica opcional
+      }
+
+      setBtDevice(device);
+      setBtChar(characteristic);
+      setBtStatusChar(statusCharacteristic);
+      setBtStatus('sucesso');
+      setBtMensagem('Bluetooth conectado com sucesso! O visor OLED agora exibe o PIN de 6 dígitos.');
+      emitirSomBip(800, 0.1);
+
+      setTimeout(() => {
+        setPassoPareamento(2);
+        setBtStatus('idle');
+        setBtMensagem('');
+      }, 700);
+    } catch (err: unknown) {
+      setBtStatus('erro');
+      const msg = err instanceof Error ? err.message : 'Falha na conexão Bluetooth';
+      setBtMensagem(msg);
+    }
+  };
+
+  // 2ª ETAPA: Envio de credenciais Wi-Fi pelo Bluetooth com chave AES-256 (PIN agora visível no OLED)
+  const handleEnviarWifiBluetooth = async () => {
+    const pinLimpo = btPin.replace(/\D/g, '').slice(0, 6);
+    if (!reconfigurandoMac && pinLimpo.length !== 6) {
+      setFeedback({ tipo: 'erro', titulo: 'PIN Obrigatório', mensagem: 'Digite os 6 números do PIN exibido no visor OLED do aparelho.' });
+      return;
+    }
+    if (!btSsid.trim()) {
+      setFeedback({ tipo: 'erro', titulo: 'SSID Obrigatório', mensagem: 'Informe o nome da rede Wi-Fi principal.' });
+      return;
+    }
+
+    try {
       setBtStatus('enviando');
       setBtMensagem('Enviando Wi-Fi e chave de segurança...');
 
-      // Formatação estrita exigida pelo firmware v11/v12: pin como string com aspas
+      let characteristic = btChar;
+      let statusChar = btStatusChar;
+
+      // Reconexão automática se a conexão GATT tiver caído
+      if (!characteristic || (btDevice?.gatt && !btDevice.gatt.connected)) {
+        if (btDevice?.gatt) {
+          setBtMensagem('Reconectando ao ESP32 via Bluetooth...');
+          const server = await btDevice.gatt.connect();
+          const service = await server.getPrimaryService('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
+          characteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8');
+          try {
+            statusChar = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26aa');
+          } catch {}
+          setBtChar(characteristic);
+          setBtStatusChar(statusChar);
+        } else {
+          throw new Error('Conexão Bluetooth perdida. Volte ao Passo 1 e reconecte ao aparelho.');
+        }
+      }
+
+      if (!characteristic) {
+        throw new Error('Canal Bluetooth não disponível.');
+      }
+
+      const keyToSend = chaveWifiGerada || (() => {
+        const keyBytes = crypto.getRandomValues(new Uint8Array(32));
+        let binary = '';
+        for (let i = 0; i < keyBytes.length; i++) binary += String.fromCharCode(keyBytes[i]);
+        const keyB64 = btoa(binary);
+        setChaveWifiGerada(keyB64);
+        return keyB64;
+      })();
+
+      // Formatação estrita exigida pelo firmware v11/v12/v16: pin como string com aspas
       const payload = JSON.stringify({
         pin: pinLimpo,
         ssid: btSsid.trim(),
         pass: btPass,
-        key: keyB64,
+        key: keyToSend,
       });
       const encoder = new TextEncoder();
       const bytes = encoder.encode(payload);
@@ -301,10 +382,9 @@ export default function Dashboard() {
         }
       }
 
-      // Tenta ler característica de status do Firmware v11/v12 (beb5483e-36e1-4688-b7f5-ea07361b26aa)
+      // Tenta ler característica de status do Firmware v11/v12/v16
       try {
         await new Promise((r) => setTimeout(r, 600));
-        const statusChar = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26aa');
         if (statusChar && statusChar.readValue) {
           const val = await statusChar.readValue();
           const decoder = new TextDecoder();
@@ -338,7 +418,7 @@ export default function Dashboard() {
       if (reconfigurandoMac) {
         try {
           await api.put(`/dispositivos/${encodeURIComponent(reconfigurandoMac)}/wifi/chave`, {
-            chave_wifi: keyB64,
+            chave_wifi: keyToSend,
           });
           setFeedback({
             tipo: 'sucesso',
@@ -352,6 +432,9 @@ export default function Dashboard() {
           setReconfigurandoMac(null);
           setBtStatus('idle');
           setBtMensagem('');
+          setBtDevice(null);
+          setBtChar(null);
+          setBtStatusChar(null);
           await carregar();
         }
         return;
@@ -363,7 +446,7 @@ export default function Dashboard() {
       }, 1500);
     } catch (err: unknown) {
       setBtStatus('erro');
-      const msg = err instanceof Error ? err.message : 'Falha na conexão Bluetooth';
+      const msg = err instanceof Error ? err.message : 'Falha no envio via Bluetooth';
       setBtMensagem(msg);
     }
   };
@@ -414,6 +497,9 @@ export default function Dashboard() {
       setPassoPareamento(1);
       setBtStatus('idle');
       setBtMensagem('');
+      setBtDevice(null);
+      setBtChar(null);
+      setBtStatusChar(null);
       emitirSomBip(800, 0.1);
       setFeedback({
         tipo: 'sucesso',
@@ -983,7 +1069,10 @@ export default function Dashboard() {
                     setReconfigurandoMac(det.mac);
                     setBtStatus('idle');
                     setBtMensagem('');
-                    setPassoPareamento(2);
+                    setBtDevice(null);
+                    setBtChar(null);
+                    setBtStatusChar(null);
+                    setPassoPareamento(1);
                     setShowPareamento(true);
                   }}
                 />
@@ -1044,60 +1133,86 @@ export default function Dashboard() {
                 {reconfigurandoMac ? 'Reconfiguração BLE' : `Passo ${passoPareamento} de 3`}
               </span>
               <h3 className={`text-xl font-bold ${altoContraste ? 'text-amber-400' : 'text-[#5F7DE3]'}`}>
-                {passoPareamento === 1 && 'Coloque o Aparelho em Configuração'}
-                {passoPareamento === 2 && 'Configurar Wi-Fi (Bluetooth)'}
-                {passoPareamento === 3 && 'Digitar Código do Visor'}
+                {passoPareamento === 1 && '1. Conectar via Bluetooth'}
+                {passoPareamento === 2 && '2. Configurar Wi-Fi e PIN'}
+                {passoPareamento === 3 && '3. Digitar Código do Visor'}
               </h3>
             </div>
 
-            {/* PASSO 1: INSTRUÇÕES VISUAIS */}
+            {/* PASSO 1: CONECTAR VIA BLUETOOTH */}
             {passoPareamento === 1 && (
               <div className="flex flex-col gap-4 text-center items-center">
                 <div
                   className={`w-20 h-20 rounded-3xl ${
-                    altoContraste ? 'bg-zinc-900 border-amber-500' : 'bg-[#5F7DE3]/10'
-                  } border flex items-center justify-center text-[#5F7DE3] shadow-inner`}
+                    altoContraste ? 'bg-zinc-900 border-amber-500 text-amber-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400'
+                  } border flex items-center justify-center shadow-inner`}
                 >
-                  <Radio className="w-10 h-10 animate-pulse" />
+                  <Bluetooth className="w-10 h-10 animate-pulse" />
                 </div>
                 <div className="text-[0.9em] text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm space-y-2">
                   <p>
-                    Ligue o aparelho segurando os <strong>3 botões de categoria</strong> (os 3 primeiros) por <strong>2 segundos</strong>.
+                    Ligue o aparelho segurando os <strong>3 botões de categoria</strong> por <strong>2 segundos</strong> (Modo Configuração).
                   </p>
                   <p className="font-semibold text-slate-700 dark:text-slate-200">
-                    A tela de status mostrará &quot;MODO CONFIGURAÇÃO&quot;.
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    (Um aparelho novo sem Wi-Fi nem conteúdo já entra em modo de configuração automaticamente).
+                    Conecte o Bluetooth para que o aparelho gere e exiba o PIN de 6 dígitos no visor OLED.
                   </p>
                 </div>
-                <div className="w-full flex gap-3 mt-2">
+
+                {btStatus !== 'idle' && (
+                  <div
+                    className={`w-full p-3 rounded-xl text-xs flex items-center gap-2 ${
+                      btStatus === 'sucesso'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : btStatus === 'erro'
+                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                        : 'bg-blue-50 text-blue-700 border border-blue-200'
+                    }`}
+                  >
+                    <Bluetooth className="w-4 h-4 shrink-0" />
+                    <span>{btMensagem}</span>
+                  </div>
+                )}
+
+                <div className="w-full flex flex-col gap-2 mt-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      emitirSomBip(600, 0.05);
-                      setPassoPareamento(2);
-                    }}
-                    className={`flex-1 py-3 rounded-2xl ${
+                    onClick={handleConectarBluetooth}
+                    disabled={btStatus === 'conectando'}
+                    className={`w-full py-3.5 rounded-2xl ${
                       altoContraste ? 'bg-amber-500 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'
-                    } font-semibold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
+                    } disabled:opacity-50 font-semibold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
                   >
-                    Avançar para Wi-Fi <ArrowRight className="w-4 h-4" />
+                    <Bluetooth className="w-4 h-4" />
+                    {btStatus === 'conectando' ? 'Buscando Aparelho via Bluetooth...' : 'Conectar via Bluetooth'}
                   </button>
+
+                  {!reconfigurandoMac && (
+                    <button
+                      type="button"
+                      onClick={() => setPassoPareamento(3)}
+                      className="py-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-semibold cursor-pointer underline text-center"
+                    >
+                      Já configurou o Wi-Fi? Pular para código
+                    </button>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* PASSO 2: CONFIGURAR WI-FI VIA WEB BLUETOOTH */}
+            {/* PASSO 2: CONFIGURAR WI-FI E PIN (APARELHO EXIBINDO O PIN) */}
             {passoPareamento === 2 && (
               <div className="flex flex-col gap-4">
-                <div className="text-center space-y-1">
-                  <p className="text-[0.85em] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Informe o PIN exibido no OLED e a rede Wi-Fi. A chave AES-256 será enviada via BLE conforme o Firmware v11/v12.
-                  </p>
-                  <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                    Aviso: Somente redes Wi-Fi de 2,4 GHz são suportadas.
-                  </p>
+                <div
+                  className={`p-3 rounded-2xl text-xs border flex items-center gap-2.5 ${
+                    altoContraste
+                      ? 'bg-zinc-900 border-amber-500 text-amber-300'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>
+                    <strong>Bluetooth conectado!</strong> O visor OLED exibe o PIN de 6 dígitos. Informe-o abaixo junto ao seu Wi-Fi.
+                  </span>
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -1122,7 +1237,7 @@ export default function Dashboard() {
 
                   <div className="flex flex-col gap-1">
                     <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                      Rede Wi-Fi Principal (SSID):
+                      Rede Wi-Fi Principal (SSID 2.4 GHz):
                     </label>
                     <input
                       value={btSsid}
@@ -1252,27 +1367,27 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={handleEnviarWifiBluetooth}
-                    disabled={btStatus === 'conectando' || btStatus === 'enviando'}
+                    disabled={btStatus === 'enviando'}
                     className={`w-full py-3 rounded-2xl ${
                       altoContraste ? 'bg-amber-500 text-black font-bold' : 'bg-[#5F7DE3] hover:bg-[#4d6bd3] text-white'
                     } disabled:opacity-50 font-semibold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
                   >
-                    <Bluetooth className="w-4 h-4" />
-                    {btStatus === 'conectando' || btStatus === 'enviando' ? 'Enviando Dados...' : 'Conectar via Bluetooth'}
+                    <Wifi className="w-4 h-4" />
+                    {btStatus === 'enviando' ? 'Enviando ao Aparelho...' : 'Enviar Wi-Fi para o Aparelho'}
                   </button>
 
-                  {!reconfigurandoMac && (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPassoPareamento(1)}
-                        className={`py-2.5 px-4 rounded-xl border ${
-                          altoContraste ? 'border-amber-500 text-amber-300' : 'border-slate-200 text-slate-600'
-                        } text-xs font-semibold cursor-pointer flex items-center gap-1`}
-                      >
-                        <ArrowLeft className="w-3.5 h-3.5" /> Voltar
-                      </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPassoPareamento(1)}
+                      className={`py-2.5 px-4 rounded-xl border ${
+                        altoContraste ? 'border-amber-500 text-amber-300' : 'border-slate-200 text-slate-600'
+                      } text-xs font-semibold cursor-pointer flex items-center gap-1`}
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" /> Voltar
+                    </button>
 
+                    {!reconfigurandoMac && (
                       <button
                         type="button"
                         onClick={() => setPassoPareamento(3)}
@@ -1280,8 +1395,8 @@ export default function Dashboard() {
                       >
                         Pular (Já conectado)
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             )}

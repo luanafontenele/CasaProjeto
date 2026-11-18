@@ -336,7 +336,9 @@ export default function Dispositivo() {
       .get<DispositivoBasico[]>('/dispositivos')
       .then((res) => {
         if (ativo) {
-          const lista = Array.isArray(res.data) ? res.data : [];
+          const lista = (Array.isArray(res.data) ? res.data : []).filter(
+            (d) => d && d.mac && d.mac !== 'DEV-MODE' && !d.nome?.toLowerCase().includes('desenvolvedor')
+          );
           setTemDispositivo(lista.length > 0);
           setDispositivoPrincipal(lista[0] || null);
         }
